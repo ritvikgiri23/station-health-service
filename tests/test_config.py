@@ -91,3 +91,24 @@ def test_flagging_thresholds_and_minimum_evidence_are_configurable() -> None:
     assert settings.scoring.flag_threshold == 50
     assert settings.scoring.clear_threshold == 50
     assert settings.scoring.min_reports_to_clear == 10
+
+
+@pytest.mark.parametrize(
+    ("keys", "message"),
+    [
+        ({}, "is not a configured API key"),
+        ({"API_KEYS_ADMIN": "demo"}, "must have only the 'read' role"),
+        ({"API_KEYS_READ": "demo", "API_KEYS_INGEST": "demo"}, "must have only the 'read' role"),
+    ],
+)
+def test_the_dashboard_demo_key_must_be_a_read_only_key(keys: dict[str, str], message: str) -> None:
+    with pytest.raises(ConfigError, match=f"DASHBOARD_DEMO_KEY {message}"):
+        Settings.from_env(
+            {"DATABASE_URL": "mysql+pymysql://u:p@h/db", "DASHBOARD_DEMO_KEY": "demo", **keys}
+        )
+
+
+def test_the_dashboard_demo_key_is_off_unless_configured() -> None:
+    settings = Settings.from_env({"DATABASE_URL": "mysql+pymysql://u:p@h/db"})
+
+    assert settings.dashboard_demo_key is None

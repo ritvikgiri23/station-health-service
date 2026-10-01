@@ -48,6 +48,8 @@ class Settings:
     # Readiness reports degraded when the last scoring run is older than this.
     scoring_stale_after: timedelta = DEFAULT_SCORING_STALE_AFTER
     scoring: ScoringConfig = DEFAULT_SCORING
+    # A read-only key the dashboard page carries, so it works locally without a login.
+    dashboard_demo_key: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -61,10 +63,11 @@ class Settings:
         if log_level not in LOG_LEVELS:
             raise ConfigError(f"LOG_LEVEL must be one of {', '.join(LOG_LEVELS)}")
 
+        api_keys = _api_keys(env)
         return cls(
             database_url=database_url,
             log_level=log_level,
-            api_keys=_api_keys(env),
+            api_keys=api_keys,
             ingest_future_tolerance=timedelta(
                 seconds=_positive_int(
                     env,
@@ -101,6 +104,7 @@ class Settings:
                 )
             ),
             scoring=_scoring(env),
+            dashboard_demo_key=_dashboard_demo_key(env, api_keys),
         )
 
 
@@ -143,6 +147,20 @@ def _api_keys(env: Mapping[str, str]) -> dict[str, frozenset[Role]]:
             if key.strip():
                 roles_by_key.setdefault(key.strip(), set()).add(role)
     return {key: frozenset(roles) for key, roles in roles_by_key.items()}
+
+
+def _dashboard_demo_key(
+    env: Mapping[str, str], api_keys: Mapping[str, frozenset[Role]]
+) -> str | None:
+    """The key is served to anyone who opens the page, so it may grant nothing beyond read."""
+    key = env.get("DASHBOARD_DEMO_KEY", "").strip()
+    if not key:
+        return None
+    if key not in api_keys:
+        raise ConfigError("DASHBOARD_DEMO_KEY is not a configured API key")
+    if api_keys[key] != {Role.READ}:
+        raise ConfigError("DASHBOARD_DEMO_KEY must have only the 'read' role")
+    return key
 
 
 def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:

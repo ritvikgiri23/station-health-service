@@ -8,6 +8,7 @@ from station_health import runtime
 from station_health.auth.api_keys import register_security_scheme
 from station_health.clock import Clock, system_clock
 from station_health.config import Settings
+from station_health.dashboard.routes import blp as dashboard_blp
 from station_health.extensions import api, db, migrate
 from station_health.health.routes import blp as health_blp
 from station_health.log import configure_logging, init_request_logging
@@ -58,6 +59,8 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     api.register_blueprint(stations_blp)
     api.register_blueprint(health_blp)
     api.register_blueprint(metrics_blp)
+    # A plain Flask blueprint: the page is not part of the API or its OpenAPI document.
+    app.register_blueprint(dashboard_blp)
     app.cli.add_command(seed_stations)
     app.cli.add_command(backfill_reports)
 

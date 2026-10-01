@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Station Health</title>
+  <meta name="api-key-header" content="{{ key_header }}">
+  <meta name="demo-api-key" content="{{ demo_key }}">
+  <link rel="stylesheet" href="{{ url_for('dashboard.static', filename='dashboard.css') }}">
+  <script src="{{ url_for('dashboard.static', filename='dashboard.js') }}" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Station Health</h1>
+    <p id="freshness" class="muted">Loading…</p>
+    <form id="key-form" hidden>
+      <label for="key-input">Read API key</label>
+      <input id="key-input" type="password" autocomplete="off" required>
+      <button type="submit">Use key</button>
+    </form>
+  </header>
+
+  <p id="error" class="error" role="alert" hidden></p>
+
+  <main>
+    <section aria-labelledby="tiles-heading">
+      <h2 id="tiles-heading" class="visually-hidden">Fleet summary</h2>
+      <div id="tiles" class="tiles"></div>
+    </section>
+
+    <section aria-labelledby="trend-heading">
+      <h2 id="trend-heading">Last 24 hours</h2>
+      <div class="charts">
+        <figure>
+          <figcaption>Average Hygiene Score</figcaption>
+          <svg id="trend-score" role="img" aria-label="Average Hygiene Score per hour"></svg>
+        </figure>
+        <figure>
+          <figcaption>Stations below the Flag Threshold</figcaption>
+          <svg id="trend-below" role="img" aria-label="Stations below the Flag Threshold per hour"></svg>
+        </figure>
+      </div>
+    </section>
+
+    <section aria-labelledby="list-heading">
+      <h2 id="list-heading">Poor Hygiene <span id="list-total" class="muted"></span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Station</th>
+              <th scope="col">Region</th>
+              <th scope="col" class="num">Score</th>
+              <th scope="col">Flag Reason</th>
+              <th scope="col">Flagged since</th>
+            </tr>
+          </thead>
+          <tbody id="list-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

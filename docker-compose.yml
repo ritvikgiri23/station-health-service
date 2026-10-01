@@ -28,6 +28,8 @@ services:
       API_KEYS_INGEST: ${API_KEYS_INGEST:-dev-ingest-key}
       API_KEYS_READ: ${API_KEYS_READ:-dev-read-key}
       API_KEYS_ADMIN: ${API_KEYS_ADMIN:-dev-admin-key}
+      # Local only: the dashboard page carries this read-only key. Leave unset anywhere real.
+      DASHBOARD_DEMO_KEY: ${DASHBOARD_DEMO_KEY:-dev-read-key}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

@@ -18,6 +18,7 @@ This builds the image, starts MySQL 8, the API and the worker, and applies datab
 
 | URL | What |
 |---|---|
+| http://localhost:8000/dashboard | [Dashboard](#dashboard): fleet summary, 24-hour trend, Poor Hygiene list |
 | http://localhost:8000/docs | Swagger UI |
 | http://localhost:8000/openapi.json | Generated OpenAPI document |
 | http://localhost:8000/livez | Liveness: `200` while the process is up |
@@ -98,6 +99,19 @@ This returns one point per completed hour over the past `hours` (24 by default, 
 
 - **Source**: points come from hourly summaries, never raw Health Reports. Summaries exist only for Stations that reported, and Silent and Poor Hygiene history is not kept, so a point covers reporting Stations and counts those below the Flag Threshold instead of those with Poor Hygiene. An hour with no summaries is a point with zero counts and `null` averages.
 - **Grouping**: `group_by=region` adds `groups`, each with a point for every hour. The Region is the Station's current one. A Station without a Region, or no longer registered, goes in `unassigned`, which comes last.
+
+### Dashboard
+
+http://localhost:8000/dashboard (or `/`, which redirects there) is one page for operators, served by the API. It shows:
+
+- **Summary tiles** from the metrics snapshot: Stations, Poor Hygiene (count and share), Silent, Unverified Stations, and the average Hygiene Score, Availability and p95 latency, with how long ago the last scoring run was.
+- **The last 24 hours** from the trend endpoint: the average Hygiene Score per hour and the Stations below the Flag Threshold per hour. An hour with no summaries is a gap.
+- **The Poor Hygiene list**, worst first, with each Station's Region, score (or Silent), Flag Reason and how long it has been flagged. It shows the worst 50, with the total.
+
+It refreshes every 30 seconds. It is plain HTML, CSS and JavaScript with no build step and no libraries (`src/station_health/dashboard/`), and it calls only the `read` endpoints `/metrics`, `/metrics/trend` and `/poor-hygiene`.
+
+- **Key**: the page loads without a key, but its data needs a `read` key. docker-compose sets `DASHBOARD_DEMO_KEY=dev-read-key`, which the page carries so it works with no setup, served with `Cache-Control: no-store`. That makes the key readable by anyone who can open the page, so it is for local use only. The service refuses to start if `DASHBOARD_DEMO_KEY` is not a configured key or has any role besides `read`. Without it, the page asks for a read key and keeps it for the browser tab's session.
+- Try it with data: `make seed`, `make backfill`, then `make simulate`. The trend fills after the worker's next cycle.
 
 ### Station Registry
 
@@ -226,6 +240,7 @@ src/station_health/
   summaries/      # hourly summaries: the pure per-Station hour summary and its table
   worker/         # scoring run, summary catch-up, retention ("run once at now") and the loop
   ops/            # liveness and readiness checks
+  dashboard/      # the operator page: a template, plain JS and CSS, no build step
   simulator/      # plays the Collector: scenario profiles (pure), live mode over HTTP, backfill
   migrations/     # Alembic migrations (Flask-Migrate)
 tests/            # integration tests against Testcontainers MySQL, unit tests of the scoring core

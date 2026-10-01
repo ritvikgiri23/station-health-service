@@ -8,9 +8,9 @@ Spec: stories 72–73.
 
 **Status:** ready-for-agent
 
-- [ ] Page is static HTML/JS served by the API, no build step
-- [ ] Summary tiles from the metrics snapshot
-- [ ] Poor Hygiene table (worst first) with Flag Reason and "flagged since"
-- [ ] 24-hour trend chart from the trend endpoint
-- [ ] Uses a read-only demo key injected for local use only; documented in README
-- [ ] Integration test: page is served and references only `read`-role endpoints
+- [x] Page is static HTML/JS served by the API, no build step
+- [x] Summary tiles from the metrics snapshot
+- [x] Poor Hygiene table (worst first) with Flag Reason and "flagged since"
+- [x] 24-hour trend chart from the trend endpoint
+- [x] Uses a read-only demo key injected for local use only; documented in README
+- [x] Integration test: page is served and references only `read`-role endpoints
