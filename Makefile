@@ -12,14 +12,14 @@ help: ## List targets
 install: ## Install pinned dependencies into .venv
 	uv sync --frozen
 
-up: ## Build and start the API and MySQL (migrations run on startup)
+up: ## Build and start the API, worker and MySQL (migrations run on startup)
 	docker compose up --build -d
 
 down: ## Stop containers (add -v to the command to also drop the database)
 	docker compose down
 
-logs: ## Follow API logs
-	docker compose logs -f api
+logs: ## Follow API and worker logs
+	docker compose logs -f api worker
 
 migrate: ## Apply migrations in the running API container
 	docker compose exec api flask --app station_health.app:create_app db upgrade

@@ -14,7 +14,7 @@ A Flask microservice that ingests Health Reports from the NOC Collector and judg
 make up        # docker compose up --build -d
 ```
 
-This builds the image, starts MySQL 8 and the API, and applies database migrations (`flask db upgrade`) before the API starts serving. Once it is up:
+This builds the image, starts MySQL 8, the API and the worker, and applies database migrations (`flask db upgrade`) before the API starts serving. The worker is the same image running `python -m station_health.worker`: every 60 seconds (`WORKER_INTERVAL_SECONDS`) it performs a scoring run. Once it is up:
 
 | URL | What |
 |---|---|
@@ -23,7 +23,7 @@ This builds the image, starts MySQL 8 and the API, and applies database migratio
 | http://localhost:8000/livez | Liveness: `200` while the process is up |
 | http://localhost:8000/readyz | Readiness: `200` when the database is reachable, `503` when it is not |
 
-Other targets: `make logs` (follow API logs), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
+Other targets: `make logs` (follow API and worker logs), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
 
 ### Try it
 
@@ -42,6 +42,23 @@ Ingest assumptions:
 - When a second Health Report arrives with the same `station_id` and `timestamp`, the first one wins. The `200` response returns the stored Health Report.
 - Only the six specified fields are accepted. An unknown field gets `422`, so that typos aren't silently dropped.
 - A body that isn't valid JSON gets `400`. A JSON body that fails validation gets `422`.
+
+### Scoring and Station health
+
+The worker scores every Station that has Health Reports in the Scoring Window, the last 15 minutes (`SCORING_WINDOW_MINUTES`), in one grouped read:
+
+- **Availability**: the share of Health Reports in the window that are not Offline.
+- **Latency score**: from the p95 latency of online Health Reports only. It is 1.0 at or below 150 ms, 0.0 at or above 1000 ms, and linear in between. The p95 uses nearest rank, so it is always an observed latency. With 15 Health Reports per window, that is the slowest one.
+- **Error score**: from errors per online Health Report (Error Count summed over online Health Reports only). It is 1.0 at 0 and 0.0 at 3 or more.
+- **Hygiene Score** = Availability × (0.4 × latency score + 0.6 × error score) × 100, rounded half up. A Station with no online Health Reports in the window scores 0, and its latency and error scores are `null` because nothing was measured.
+
+All limits and weights are configurable (see `.env.example`). Each run also records when it ran, how many Stations it scored and how long it took.
+
+```sh
+curl localhost:8000/stations/ST-0001/health -H 'X-API-Key: dev-read-key'
+```
+
+This returns the Station's Region, whether it is verified, its latest Health Report (newest `timestamp`, so a late-arriving older Health Report never replaces it), its `hygiene` block (score, Availability, latency score, error score, p95 latency, and Health Reports in the window), and `scored_at`, which is when the last scoring run completed. `hygiene` is `null` until a scoring run has scored the Station. An unknown Station returns `404`.
 
 ### Authentication
 
@@ -90,7 +107,10 @@ src/station_health/
   auth/           # API keys and roles, applied per route
   reports/        # Health Report ingest: schema, validation, idempotent storage
   stations/       # Station Registry
+  scoring.py      # the pure scoring core: window Health Reports → Hygiene Score
+  health/         # Station health status endpoint, Station health and scoring-run records
+  worker/         # the scoring run ("run once at now") and the worker loop process
   ops/            # liveness and readiness checks
   migrations/     # Alembic migrations (Flask-Migrate)
-tests/            # integration tests against Testcontainers MySQL
+tests/            # integration tests against Testcontainers MySQL, unit tests of the scoring core
 ```

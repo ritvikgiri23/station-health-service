@@ -9,6 +9,7 @@ from station_health.auth.api_keys import register_security_scheme
 from station_health.clock import Clock, system_clock
 from station_health.config import Settings
 from station_health.extensions import api, db, migrate
+from station_health.health.routes import blp as health_blp
 from station_health.log import configure_logging, init_request_logging
 from station_health.ops.routes import blp as ops_blp
 from station_health.reports.routes import blp as reports_blp
@@ -52,5 +53,6 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     api.register_blueprint(ops_blp)
     api.register_blueprint(reports_blp)
     api.register_blueprint(stations_blp)
+    api.register_blueprint(health_blp)
 
     return app

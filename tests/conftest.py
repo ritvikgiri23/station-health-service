@@ -1,6 +1,7 @@
 """Integration test harness: the real Flask app against a real MySQL 8 from Testcontainers."""
 
 from collections.abc import Callable, Iterator
+from datetime import datetime
 
 import pytest
 from flask import Flask
@@ -12,6 +13,7 @@ from testcontainers.community.mysql import MySqlContainer
 from station_health.app import create_app
 from station_health.config import Settings
 from station_health.extensions import db
+from station_health.worker.scoring_run import ScoringRun, run_scoring_once
 from tests.support import START, TEST_API_KEYS, FakeClock
 
 MYSQL_IMAGE = "mysql:8.4"
@@ -72,3 +74,14 @@ def make_client(test_env: dict[str, str], app: Flask) -> Callable[..., FlaskClie
         return create_app(settings, clock=FakeClock(START)).test_client()
 
     return build
+
+
+@pytest.fixture
+def run_worker(app: Flask) -> Callable[[datetime], ScoringRun]:
+    """Run the worker's scoring run once, as of `now`."""
+
+    def run(now: datetime) -> ScoringRun:
+        with app.app_context():
+            return run_scoring_once(now)
+
+    return run

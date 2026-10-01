@@ -39,5 +39,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Same image as the API, a different command: a scoring run every WORKER_INTERVAL_SECONDS.
+  worker:
+    build: .
+    command: ["python", "-m", "station_health.worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://station_health:station_health@mysql:3306/station_health}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      # The API container applies migrations before it reports healthy.
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mysql-data:
