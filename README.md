@@ -80,6 +80,24 @@ This lists every Station with Poor Hygiene: its Region, whether it is verified, 
 - **Filters**: `region`, `flag_reason` (`silent`, `availability`, `latency`, `errors`) and `verified` (`true` or `false`). They can be combined.
 - **Paging**: `limit` sets the page size, 50 by default and at most 500. To get the next page, pass the response's `next_cursor` as `cursor`, keeping the same filters and sort. `next_cursor` is `null` on the last page. The cursor is opaque. It holds the sort key of the last Station on the page, and the next page starts strictly after it. So for a fixed set of Stations, no Station is skipped or repeated. While scores change between requests, a Station whose score moved past the cursor can appear twice or not at all, but the others keep their places. A cursor that is malformed, or that came from another sort, gets `400`.
 
+### Station Registry
+
+The Station Registry lists the Stations expected to exist, each with its Region. Managing it needs an `admin` key. `read` and `ingest` keys get `403`.
+
+```sh
+make seed N=1000   # register ST-000001..ST-001000, verified, across 5 Regions
+curl -X PUT localhost:8000/stations/ST-0042 -H 'X-API-Key: dev-admin-key' \
+  -H 'Content-Type: application/json' -d '{"region": "eu-west"}'
+curl 'localhost:8000/stations?verified=false' -H 'X-API-Key: dev-admin-key'
+curl -X DELETE localhost:8000/stations/ST-0042 -H 'X-API-Key: dev-admin-key'
+```
+
+- `PUT /stations/{station_id}` with `{"region": "..."}` (or `null`) registers or updates a Station and marks it verified. It returns `201` when the Station is new, otherwise `200`. Repeating it leaves the Station as it was, apart from its updated time. Registering an Unverified Station confirms it.
+- A registered Station that never reports is Silent, so it has Poor Hygiene after the next scoring run.
+- `DELETE /stations/{station_id}` returns `204`, or `404` if the Station isn't registered. It removes the Station and its current health, so the Station is no longer scored or listed. Its Health Reports and Flag Changes stay, and the Health Reports age out. A later Health Report for that Station registers it again as an Unverified Station. That Station starts with no flag state, and its Health Reports still in the window count. One exception: a scoring run already under way when the delete lands can write the Station's health row back. The row stays hidden, but a Station registered again later would start from it.
+- `GET /stations` lists Stations by `station_id`. `verified=false` shows only Unverified Stations. It is paged like the Poor Hygiene list (`limit` 50 by default, at most 500; pass `next_cursor` as `cursor`).
+- `make seed` runs `flask seed-stations --count N` in the API container. It is idempotent: running it again updates the same Stations, and confirms any of them that had reported as Unverified Stations.
+
 ### Authentication
 
 Every endpoint except `/livez`, `/readyz` and the docs needs an API key in the `X-API-Key` header. Keys map to three roles: `ingest` (the Collector), `read` (operators and the dashboard) and `admin` (Station Registry). Requests with no key, or an unknown key, get `401`. A key without the route's role gets `403`. docker-compose ships demo keys (`dev-ingest-key`, `dev-read-key`, `dev-admin-key`). In Swagger UI, click **Authorize** and paste a key.
@@ -126,7 +144,8 @@ src/station_health/
   errors.py       # the one JSON error shape
   auth/           # API keys and roles, applied per route
   reports/        # Health Report ingest: schema, validation, idempotent storage
-  stations/       # Station Registry
+  paging.py       # opaque cursors and page sizes shared by the list endpoints
+  stations/       # Station Registry: admin endpoints, storage, the seed command
   scoring.py      # the pure scoring core: window Health Reports + flag state → Hygiene Score, Poor Hygiene
   health/         # Station health status endpoint, Station health, Flag Change and scoring-run records
   worker/         # the scoring run ("run once at now") and the worker loop process

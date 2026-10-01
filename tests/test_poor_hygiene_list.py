@@ -4,14 +4,10 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-from flask import Flask
 from flask.testing import FlaskClient
-from sqlalchemy import update
 
-from station_health.extensions import db
-from station_health.stations.models import Station
 from station_health.worker.scoring_run import ScoringRun
-from tests.support import INGEST_KEY, READ_KEY, START, auth, health_report, iso
+from tests.support import ADMIN_KEY, INGEST_KEY, READ_KEY, START, auth, health_report, iso
 
 RunWorker = Callable[[datetime], ScoringRun]
 
@@ -39,15 +35,12 @@ def silence(client: FlaskClient, station_id: str) -> None:
     submit(client, station_id=station_id, timestamp=iso(T0 - timedelta(minutes=30)))
 
 
-def set_registry_facts(app: Flask, station_id: str, region: str | None, verified: bool) -> None:
-    """Set a Station's Region and verified. Test arrangement until the registry API exists."""
-    with app.app_context():
-        db.session.execute(
-            update(Station)
-            .where(Station.station_id == station_id)
-            .values(region=region, verified=verified)
-        )
-        db.session.commit()
+def register(client: FlaskClient, station_id: str, region: str) -> None:
+    """Register a Station in a Region, which also marks it verified."""
+    response = client.put(
+        f"/stations/{station_id}", json={"region": region}, headers=auth(ADMIN_KEY)
+    )
+    assert response.status_code in (200, 201), response.json
 
 
 def submit(client: FlaskClient, **fields: Any) -> None:
@@ -121,19 +114,19 @@ def test_ties_on_score_go_to_the_oldest_flagged_since_then_station_id(
 
 
 def test_filters_by_region_flag_reason_and_verified(
-    app: Flask, client: FlaskClient, run_worker: RunWorker
+    client: FlaskClient, run_worker: RunWorker
 ) -> None:
-    submit_scoring(client, "ST-EU-VERIFIED", 30)
-    submit_scoring(client, "ST-EU-UNVERIFIED", 20)
+    submit_scoring(client, "ST-EU-30", 30)
+    submit_scoring(client, "ST-EU-20", 20)
     silence(client, "ST-US-SILENT")
-    submit_scoring(client, "ST-UNASSIGNED", 10)
-    set_registry_facts(app, "ST-EU-VERIFIED", "eu-west", verified=True)
-    set_registry_facts(app, "ST-EU-UNVERIFIED", "eu-west", verified=False)
-    set_registry_facts(app, "ST-US-SILENT", "us-east", verified=True)
+    submit_scoring(client, "ST-UNVERIFIED", 10)
+    register(client, "ST-EU-30", "eu-west")
+    register(client, "ST-EU-20", "eu-west")
+    register(client, "ST-US-SILENT", "us-east")
     run_worker(T0)
 
     by_region = poor_hygiene(client, region="eu-west")
-    assert station_ids(by_region) == ["ST-EU-UNVERIFIED", "ST-EU-VERIFIED"]
+    assert station_ids(by_region) == ["ST-EU-20", "ST-EU-30"]
     assert by_region["items"][0]["region"] == "eu-west"
     assert by_region["total"] == 2
 
@@ -144,14 +137,15 @@ def test_filters_by_region_flag_reason_and_verified(
     assert poor_hygiene(client, flag_reason="errors")["total"] == 0
 
     verified = poor_hygiene(client, verified="true")
-    assert station_ids(verified) == ["ST-US-SILENT", "ST-EU-VERIFIED"]
+    assert station_ids(verified) == ["ST-US-SILENT", "ST-EU-20", "ST-EU-30"]
     unverified = poor_hygiene(client, verified="false")
-    assert station_ids(unverified) == ["ST-UNASSIGNED", "ST-EU-UNVERIFIED"]
-    assert unverified["total"] == 2
+    assert station_ids(unverified) == ["ST-UNVERIFIED"]
+    assert unverified["items"][0]["verified"] is False
+    assert unverified["total"] == 1
 
-    combined = poor_hygiene(client, region="eu-west", verified="false")
-    assert station_ids(combined) == ["ST-EU-UNVERIFIED"]
-    assert combined["total"] == 1
+    combined = poor_hygiene(client, region="us-east", flag_reason="silent", verified="true")
+    assert station_ids(combined) == ["ST-US-SILENT"]
+    assert poor_hygiene(client, region="us-east", flag_reason="availability")["total"] == 0
 
     assert poor_hygiene(client, region="ap-south") == {
         "items": [],
@@ -201,11 +195,11 @@ def test_a_last_full_page_has_no_next_cursor(client: FlaskClient, run_worker: Ru
     assert [station_ids(page) for page in pages] == [["ST-1", "ST-2"], ["ST-3", "ST-4"]]
 
 
-def test_paging_keeps_the_filters(app: Flask, client: FlaskClient, run_worker: RunWorker) -> None:
+def test_paging_keeps_the_filters(client: FlaskClient, run_worker: RunWorker) -> None:
     for station in ("ST-1", "ST-2", "ST-3", "ST-4", "ST-5"):
         submit_scoring(client, station, 30)
     for station in ("ST-2", "ST-3", "ST-5"):
-        set_registry_facts(app, station, "eu-west", verified=True)
+        register(client, station, "eu-west")
     run_worker(T0)
 
     pages = all_pages(client, region="eu-west", limit=2)

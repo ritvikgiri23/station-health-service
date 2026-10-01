@@ -14,6 +14,7 @@ from station_health.log import configure_logging, init_request_logging
 from station_health.ops.routes import blp as ops_blp
 from station_health.reports.routes import blp as reports_blp
 from station_health.stations.routes import blp as stations_blp
+from station_health.stations.seed import seed_stations
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 DATABASE_TIMEOUT_SECONDS = 3
@@ -54,5 +55,6 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     api.register_blueprint(reports_blp)
     api.register_blueprint(stations_blp)
     api.register_blueprint(health_blp)
+    app.cli.add_command(seed_stations)
 
     return app

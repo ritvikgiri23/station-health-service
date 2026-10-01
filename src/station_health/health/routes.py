@@ -7,7 +7,6 @@ from station_health.auth.api_keys import require_role
 from station_health.auth.roles import Role
 from station_health.errors import abort
 from station_health.health.poor_hygiene import (
-    InvalidCursor,
     PoorHygieneFilters,
     PoorHygienePage,
     PoorHygieneSort,
@@ -19,6 +18,7 @@ from station_health.health.schemas import (
     StationHealthStatusSchema,
 )
 from station_health.health.status import StationHealthStatus, station_health_status
+from station_health.paging import InvalidCursor
 from station_health.scoring import FlagReason
 
 blp = Blueprint("health", __name__, description="Station health and Hygiene Scores")

@@ -7,9 +7,6 @@ requests, a Station whose key moves across the cursor can appear twice or not at
 but the others keep their place, which an offset could not promise.
 """
 
-import base64
-import binascii
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -21,11 +18,9 @@ from sqlalchemy.orm import InstrumentedAttribute
 from station_health.extensions import db
 from station_health.health.models import StationHealth
 from station_health.health.status import last_scored_at
+from station_health.paging import DEFAULT_PAGE_SIZE, InvalidCursor, decode_cursor, encode_cursor
 from station_health.scoring import FlagReason
 from station_health.stations.models import Station
-
-DEFAULT_PAGE_SIZE = 50
-MAX_PAGE_SIZE = 500
 
 
 class PoorHygieneSort(StrEnum):
@@ -58,10 +53,6 @@ _SORT_KEYS: dict[PoorHygieneSort, list[tuple[str, bool]]] = {
         ("station_id", False),
     ],
 }
-
-
-class InvalidCursor(ValueError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -161,31 +152,32 @@ def _after(sort_key: list[tuple[str, bool]], values: dict[str, Any]) -> ColumnEl
 
 
 def _encode(station: PoorHygieneStation, sort: PoorHygieneSort) -> str:
-    cursor = {
-        "sort": sort.value,
-        "score": station.score or 0,
-        "flagged_since": station.flagged_since.isoformat(),
-        "station_id": station.station_id,
-    }
-    return base64.urlsafe_b64encode(json.dumps(cursor).encode()).decode()
+    return encode_cursor(
+        {
+            "sort": sort.value,
+            "score": station.score or 0,
+            "flagged_since": station.flagged_since.isoformat(),
+            "station_id": station.station_id,
+        }
+    )
 
 
 def _decode(cursor: str, sort: PoorHygieneSort) -> dict[str, Any]:
+    decoded = decode_cursor(cursor)
     try:
-        decoded = json.loads(base64.urlsafe_b64decode(cursor))
         values = {
             "score": decoded["score"],
             "flagged_since": datetime.fromisoformat(decoded["flagged_since"]),
             "station_id": decoded["station_id"],
         }
-        valid = (
-            decoded["sort"] == sort.value
-            and type(values["score"]) is int
-            and isinstance(values["station_id"], str)
-            and values["flagged_since"].tzinfo is not None
-        )
-    except (binascii.Error, ValueError, TypeError, KeyError) as error:
+    except (ValueError, TypeError, KeyError) as error:
         raise InvalidCursor from error
+    valid = (
+        decoded.get("sort") == sort.value
+        and type(values["score"]) is int
+        and isinstance(values["station_id"], str)
+        and values["flagged_since"].tzinfo is not None
+    )
     if not valid:
         raise InvalidCursor
     return values

@@ -1,7 +1,8 @@
 from marshmallow import Schema, fields
 from marshmallow.validate import Range
 
-from station_health.health.poor_hygiene import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PoorHygieneSort
+from station_health.health.poor_hygiene import PoorHygieneSort
+from station_health.paging import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from station_health.reports.models import ConnectivityStatus
 from station_health.scoring import FlagReason
 
