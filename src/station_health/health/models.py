@@ -24,6 +24,10 @@ class StationHealth(Base):
     """
 
     __tablename__ = "station_health"
+    # For the Poor Hygiene list.
+    __table_args__ = (
+        Index("ix_station_health_poor_hygiene_flagged_since", "poor_hygiene", "flagged_since"),
+    )
 
     station_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     # Null, like every part of the score, while the Station is Silent.

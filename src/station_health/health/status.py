@@ -33,10 +33,15 @@ def station_health_status(station_id: str) -> StationHealthStatus | None:
         .order_by(HealthReport.timestamp.desc())
         .limit(1)
     )
-    run = db.session.get(ScoringRunRecord, SCORING_RUN_RECORD_ID)
     return StationHealthStatus(
         station=station,
         latest_report=latest_report,
         hygiene=db.session.get(StationHealth, station_id),
-        scored_at=run.scored_at if run else None,
+        scored_at=last_scored_at(),
     )
+
+
+def last_scored_at() -> datetime | None:
+    """When the last scoring run completed; None before the first one."""
+    run = db.session.get(ScoringRunRecord, SCORING_RUN_RECORD_ID)
+    return run.scored_at if run else None

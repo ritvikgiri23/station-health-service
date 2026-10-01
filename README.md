@@ -70,6 +70,16 @@ curl localhost:8000/stations/ST-0001/health -H 'X-API-Key: dev-read-key'
 
 This returns the Station's Region, whether it is verified, its latest Health Report (newest `timestamp`, so a late-arriving older Health Report never replaces it), its `hygiene` block (score, Availability, latency score, error score, p95 latency, Health Reports in the window, `silent`, `poor_hygiene`, `flag_reason` and `flagged_since`), and `scored_at`, which is when the last scoring run completed. `hygiene` is `null` until a scoring run has scored the Station. An unknown Station returns `404`.
 
+```sh
+curl 'localhost:8000/poor-hygiene?region=eu-west&limit=20' -H 'X-API-Key: dev-read-key'
+```
+
+This lists every Station with Poor Hygiene: its Region, whether it is verified, score, `silent`, `flag_reason` and `flagged_since`. Along with `items` it returns `total` (all Stations matching the filters, across every page), `next_cursor` and `scored_at`.
+
+- **Order**: worst score first, with a Silent Station counted as 0. Ties go to the oldest `flagged_since`, then to `station_id`. With `sort=flagged_since` (oldest first) or `sort=-flagged_since` (newest first), ties go to the worst score.
+- **Filters**: `region`, `flag_reason` (`silent`, `availability`, `latency`, `errors`) and `verified` (`true` or `false`). They can be combined.
+- **Paging**: `limit` sets the page size, 50 by default and at most 500. To get the next page, pass the response's `next_cursor` as `cursor`, keeping the same filters and sort. `next_cursor` is `null` on the last page. The cursor is opaque. It holds the sort key of the last Station on the page, and the next page starts strictly after it. So for a fixed set of Stations, no Station is skipped or repeated. While scores change between requests, a Station whose score moved past the cursor can appear twice or not at all, but the others keep their places. A cursor that is malformed, or that came from another sort, gets `400`.
+
 ### Authentication
 
 Every endpoint except `/livez`, `/readyz` and the docs needs an API key in the `X-API-Key` header. Keys map to three roles: `ingest` (the Collector), `read` (operators and the dashboard) and `admin` (Station Registry). Requests with no key, or an unknown key, get `401`. A key without the route's role gets `403`. docker-compose ships demo keys (`dev-ingest-key`, `dev-read-key`, `dev-admin-key`). In Swagger UI, click **Authorize** and paste a key.

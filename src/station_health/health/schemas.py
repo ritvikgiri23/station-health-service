@@ -1,7 +1,17 @@
 from marshmallow import Schema, fields
+from marshmallow.validate import Range
 
+from station_health.health.poor_hygiene import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, PoorHygieneSort
 from station_health.reports.models import ConnectivityStatus
 from station_health.scoring import FlagReason
+
+
+def scored_at_field() -> fields.AwareDateTime:
+    return fields.AwareDateTime(
+        required=True,
+        allow_none=True,
+        metadata={"description": "When the last scoring run completed. Null before the first run."},
+    )
 
 
 class LatestHealthReportSchema(Schema):
@@ -103,8 +113,67 @@ class StationHealthStatusSchema(Schema):
         allow_none=True,
         metadata={"description": "Null until a scoring run has scored the Station."},
     )
-    scored_at = fields.AwareDateTime(
+    scored_at = scored_at_field()
+
+
+class PoorHygieneQuerySchema(Schema):
+    region = fields.String(metadata={"description": "Only Stations in this Region."})
+    flag_reason = fields.Enum(
+        FlagReason, by_value=True, metadata={"description": "Only Stations with this Flag Reason."}
+    )
+    verified = fields.Boolean(
+        metadata={"description": "Only verified (true) or Unverified (false) Stations."}
+    )
+    sort = fields.Enum(
+        PoorHygieneSort,
+        by_value=True,
+        load_default=PoorHygieneSort.SCORE,
+        metadata={
+            "description": "`score`: worst Hygiene Score first (Silent as 0), then oldest "
+            '"flagged since". `flagged_since` / `-flagged_since`: oldest / newest "flagged '
+            'since" first, then worst score.'
+        },
+    )
+    limit = fields.Integer(
+        load_default=DEFAULT_PAGE_SIZE,
+        validate=Range(min=1, max=MAX_PAGE_SIZE),
+        metadata={"description": f"Stations per page, at most {MAX_PAGE_SIZE}."},
+    )
+    cursor = fields.String(
+        metadata={
+            "description": "The `next_cursor` of the previous page, with the same filters "
+            "and sort. Opaque."
+        }
+    )
+
+
+class PoorHygieneStationSchema(Schema):
+    station_id = fields.String(required=True)
+    region = fields.String(required=True, allow_none=True)
+    verified = fields.Boolean(
+        required=True, metadata={"description": "False for an Unverified Station."}
+    )
+    score = fields.Integer(
         required=True,
         allow_none=True,
-        metadata={"description": "When the last scoring run completed. Null before the first run."},
+        metadata={"description": "Hygiene Score, 0-100. Null while Silent; sorted as 0."},
     )
+    silent = fields.Boolean(required=True)
+    flag_reason = fields.Enum(FlagReason, by_value=True, required=True)
+    flagged_since = fields.AwareDateTime(
+        required=True, metadata={"description": "When the Station entered Poor Hygiene."}
+    )
+
+
+class PoorHygienePageSchema(Schema):
+    items = fields.List(fields.Nested(PoorHygieneStationSchema), required=True)
+    total = fields.Integer(
+        required=True,
+        metadata={"description": "Stations with Poor Hygiene matching the filters, on all pages."},
+    )
+    next_cursor = fields.String(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Pass as `cursor` for the next page. Null on the last page."},
+    )
+    scored_at = scored_at_field()
