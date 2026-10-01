@@ -62,8 +62,8 @@ class HygieneSchema(Schema):
         required=True,
         metadata={
             "description": "Health Reports in the Scoring Window. Like the other parts, it is "
-            "as of the last scoring run that changed the score, Silent, Poor Hygiene or "
-            "Flag Reason."
+            "as of the last scoring run that changed the score, Silent, Poor Hygiene, "
+            "Flag Reason or firmware version."
         },
     )
     silent = fields.Boolean(

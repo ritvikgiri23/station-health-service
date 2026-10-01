@@ -60,7 +60,7 @@ Each run then decides whether each Station has **Poor Hygiene**:
 - The **Flag Reason** is `silent`, or whichever of Availability (`availability`), latency score (`latency`) and error score (`errors`) is lowest. Ties go to the first in that order. It is recomputed every run, so it can change while the Station stays flagged.
 - Every entry and exit is appended to the Flag Change log (`flag_changes`) with the Station, time, direction (`entered` or `left`), Flag Reason (on leaving, the one it last had while flagged) and score. A Station records "flagged since" when it enters Poor Hygiene, and clears it when it leaves.
 
-A run writes a Station's health row only when its score, Silent, Poor Hygiene or Flag Reason changed. The other parts shown (Availability, latency and error scores, p95 latency, report count) are as of that write.
+A run writes a Station's health row only when its score, Silent, Poor Hygiene, Flag Reason or firmware version changed. The other parts shown (Availability, latency and error scores, p95 latency, report count) are as of that write.
 
 All limits, weights, thresholds and the minimum Health Reports to clear are configurable (see `.env.example`). Each run also records when it ran, how many Stations it scored and how long it took. The worker logs how many rows it wrote and how many Flag Changes it made.
 
@@ -79,6 +79,16 @@ This lists every Station with Poor Hygiene: its Region, whether it is verified, 
 - **Order**: worst score first, with a Silent Station counted as 0. Ties go to the oldest `flagged_since`, then to `station_id`. With `sort=flagged_since` (oldest first) or `sort=-flagged_since` (newest first), ties go to the worst score.
 - **Filters**: `region`, `flag_reason` (`silent`, `availability`, `latency`, `errors`) and `verified` (`true` or `false`). They can be combined.
 - **Paging**: `limit` sets the page size, 50 by default and at most 500. To get the next page, pass the response's `next_cursor` as `cursor`, keeping the same filters and sort. `next_cursor` is `null` on the last page. The cursor is opaque. It holds the sort key of the last Station on the page, and the next page starts strictly after it. So for a fixed set of Stations, no Station is skipped or repeated. While scores change between requests, a Station whose score moved past the cursor can appear twice or not at all, but the others keep their places. A cursor that is malformed, or that came from another sort, gets `400`.
+
+```sh
+curl 'localhost:8000/metrics?group_by=region' -H 'X-API-Key: dev-read-key'
+```
+
+This is a snapshot of current health across every registered Station. `overall` holds the station count, Poor Hygiene count and percentage, Silent count, Unverified Station count, and the average Hygiene Score, Availability and p95 latency. It also returns `scored_at`.
+
+- **Grouping**: `group_by=region` or `group_by=firmware_version` adds `groups`, one per key, sorted by key. Stations without a Region go in `unassigned`. Stations no Health Report has given a firmware version for yet go in `unreported`. Both of those come last. Without `group_by`, `groups` is `null`.
+- **Firmware version**: each scoring run takes it from the Station's newest Health Report in the Scoring Window. A Silent Station keeps the last one seen.
+- **Source**: figures come from Station health and the Station Registry, never from raw Health Reports, so they are as of the last scoring run. A Station registered since that run counts toward the station count only. Averages cover only Stations that have a score, so Silent Stations are left out. Each average is `null` when no Station has a score, and the percentage is `null` when there are no Stations.
 
 ### Station Registry
 

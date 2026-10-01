@@ -8,7 +8,7 @@ Spec: stories 45–47, 49; "API contracts → Metrics snapshot".
 
 **Status:** ready-for-agent
 
-- [ ] Endpoint (role `read`) returns station count, Poor Hygiene count and percentage, Silent count, Unverified Station count, average Hygiene Score, average Availability, average p95 latency
-- [ ] Optional grouping by Region (Stations without Region grouped as `unassigned`) or by firmware version
-- [ ] Served from Station health / Station Registry, not raw Health Reports
-- [ ] Integration tests verify figures for a known dataset, overall and for each grouping
+- [x] Endpoint (role `read`) returns station count, Poor Hygiene count and percentage, Silent count, Unverified Station count, average Hygiene Score, average Availability, average p95 latency
+- [x] Optional grouping by Region (Stations without Region grouped as `unassigned`) or by firmware version
+- [x] Served from Station health / Station Registry, not raw Health Reports
+- [x] Integration tests verify figures for a known dataset, overall and for each grouping

@@ -11,6 +11,7 @@ from station_health.config import Settings
 from station_health.extensions import api, db, migrate
 from station_health.health.routes import blp as health_blp
 from station_health.log import configure_logging, init_request_logging
+from station_health.metrics.routes import blp as metrics_blp
 from station_health.ops.routes import blp as ops_blp
 from station_health.reports.routes import blp as reports_blp
 from station_health.stations.routes import blp as stations_blp
@@ -55,6 +56,7 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     api.register_blueprint(reports_blp)
     api.register_blueprint(stations_blp)
     api.register_blueprint(health_blp)
+    api.register_blueprint(metrics_blp)
     app.cli.add_command(seed_stations)
 
     return app

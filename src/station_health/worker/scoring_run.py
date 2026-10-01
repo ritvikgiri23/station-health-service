@@ -36,7 +36,7 @@ from station_health.scoring import (
 from station_health.stations.models import Station
 
 # The Station health columns whose change makes a scoring run write the row.
-VISIBLE_STATE = ("hygiene_score", "silent", "poor_hygiene", "flag_reason")
+VISIBLE_STATE = ("hygiene_score", "silent", "poor_hygiene", "flag_reason", "firmware_version")
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ def run_scoring_once(now: datetime) -> ScoringRun:
     """Assess every registered Station from its Scoring Window ending at `now`."""
     started = time.perf_counter()
     settings = current_settings()
-    window = _window_reports(now - settings.scoring_window, now)
+    window, firmware = _window_reports(now - settings.scoring_window, now)
     current = _current_health()
 
     rows: list[dict[str, Any]] = []
@@ -68,7 +68,11 @@ def run_scoring_once(now: datetime) -> ScoringRun:
             now,
             settings.scoring,
         )
-        row = _health_row(station_id, assessment)
+        # A Station with no Health Report in the window keeps its last known firmware.
+        firmware_version = firmware.get(
+            station_id, previous["firmware_version"] if previous else None
+        )
+        row = _health_row(station_id, assessment, firmware_version)
         if previous is None or any(row[c] != previous[c] for c in VISIBLE_STATE):
             rows.append(row)
         if assessment.flag_change is not None:
@@ -124,7 +128,9 @@ def _flag_state(health: dict[str, Any]) -> FlagState:
     )
 
 
-def _health_row(station_id: str, assessment: Assessment) -> dict[str, Any]:
+def _health_row(
+    station_id: str, assessment: Assessment, firmware_version: str | None
+) -> dict[str, Any]:
     score = assessment.score
     # A Silent Station has no score, so every part is null.
     parts = asdict(score) if score else dict.fromkeys(f.name for f in fields(StationScore))
@@ -136,19 +142,29 @@ def _health_row(station_id: str, assessment: Assessment) -> dict[str, Any]:
         "poor_hygiene": assessment.flag.poor_hygiene,
         "flag_reason": assessment.flag.flag_reason,
         "flagged_since": assessment.flag.flagged_since,
+        "firmware_version": firmware_version,
     }
 
 
-def _window_reports(start: datetime, end: datetime) -> dict[str, list[WindowReport]]:
-    """Health Reports with `timestamp` in (start, end], grouped by Station."""
+def _window_reports(
+    start: datetime, end: datetime
+) -> tuple[dict[str, list[WindowReport]], dict[str, str]]:
+    """Health Reports with `timestamp` in (start, end], grouped by Station, and each
+    Station's firmware version from the newest of them.
+    """
     statement = select(
         HealthReport.station_id,
+        HealthReport.timestamp,
         HealthReport.connectivity_status,
         HealthReport.latency_ms,
         HealthReport.error_count,
+        HealthReport.firmware_version,
     ).where(HealthReport.timestamp > start, HealthReport.timestamp <= end)
     grouped: dict[str, list[WindowReport]] = defaultdict(list)
-    for station_id, status, latency_ms, error_count in db.session.execute(statement):
+    newest: dict[str, tuple[datetime, str]] = {}
+    for station_id, timestamp, status, latency_ms, error_count, firmware in db.session.execute(
+        statement
+    ):
         grouped[station_id].append(
             WindowReport(
                 online=status is ConnectivityStatus.ONLINE,
@@ -156,7 +172,9 @@ def _window_reports(start: datetime, end: datetime) -> dict[str, list[WindowRepo
                 error_count=error_count,
             )
         )
-    return grouped
+        if station_id not in newest or timestamp > newest[station_id][0]:
+            newest[station_id] = (timestamp, firmware)
+    return grouped, {station_id: firmware for station_id, (_, firmware) in newest.items()}
 
 
 def _upsert(model: type[Base]) -> Insert:

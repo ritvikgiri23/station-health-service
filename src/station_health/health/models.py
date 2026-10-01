@@ -19,8 +19,8 @@ class StationHealth(Base):
     """A Station's current Hygiene Score, its parts and its flag state.
 
     One row per Station. A scoring run writes a row only when its Hygiene Score, Silent,
-    Poor Hygiene or Flag Reason changed, so the other parts are as of that write, and
-    freshness comes from the scoring-run record, never from this table (ADR-0003).
+    Poor Hygiene, Flag Reason or firmware version changed, so the other parts are as of that
+    write, and freshness comes from the scoring-run record, never from this table (ADR-0003).
     """
 
     __tablename__ = "station_health"
@@ -43,6 +43,9 @@ class StationHealth(Base):
     # Both null unless the Station has Poor Hygiene.
     flag_reason: Mapped[FlagReason | None] = mapped_column(_values_enum(FlagReason, "flag_reason"))
     flagged_since: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # From the newest Health Report in the Scoring Window. Kept while Silent; null until
+    # a scoring run has seen a Health Report for the Station.
+    firmware_version: Mapped[str | None] = mapped_column(String(64))
 
 
 class FlagChangeRecord(Base):
