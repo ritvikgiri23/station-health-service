@@ -14,6 +14,7 @@ from station_health.log import configure_logging, init_request_logging
 from station_health.metrics.routes import blp as metrics_blp
 from station_health.ops.routes import blp as ops_blp
 from station_health.reports.routes import blp as reports_blp
+from station_health.simulator.backfill import backfill_reports
 from station_health.stations.routes import blp as stations_blp
 from station_health.stations.seed import seed_stations
 
@@ -58,5 +59,6 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     api.register_blueprint(health_blp)
     api.register_blueprint(metrics_blp)
     app.cli.add_command(seed_stations)
+    app.cli.add_command(backfill_reports)
 
     return app

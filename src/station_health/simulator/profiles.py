@@ -18,6 +18,7 @@ each profile yields:
 """
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -87,6 +88,13 @@ def fleet(count: int) -> list[SimStation]:
                 )
             )
     return stations
+
+
+def reading_generators(stations: Sequence[SimStation], seed: int) -> dict[str, random.Random]:
+    """One generator per Station, so a Station's readings depend on neither the fleet size
+    nor the mode (live or backfill).
+    """
+    return {s.station_id: random.Random(f"{seed}:{s.station_id}") for s in stations}
 
 
 def health_report(

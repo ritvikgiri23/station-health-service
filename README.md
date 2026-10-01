@@ -23,7 +23,7 @@ This builds the image, starts MySQL 8, the API and the worker, and applies datab
 | http://localhost:8000/livez | Liveness: `200` while the process is up |
 | http://localhost:8000/readyz | Readiness: `503` when the database is unreachable; otherwise `200`, with status `degraded` when the last scoring run is older than 3 minutes (`SCORING_STALE_AFTER_SECONDS`) or there has been none |
 
-Other targets: `make logs` (follow API and worker logs), `make simulate` (start the [simulator](#simulator)), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
+Other targets: `make logs` (follow API and worker logs), `make simulate` (start the [simulator](#simulator)), `make backfill` (load past Health Reports, see [Backfill](#backfill)), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
 
 ### Try it
 
@@ -155,6 +155,23 @@ Outside Docker: `PYTHONPATH=src uv run python -m station_health.simulator --help
 - **Stations**: before it starts, the simulator registers its Stations with the `admin` key (`SIM_ADMIN_KEY`). It uses the same IDs and Regions as `make seed` (ST-000001, ...), so the two agree. Unregistered Stations are ST-UNREG-0001, and so on.
 - A Health Report the API doesn't accept, or that can't reach it, is logged and dropped, as a real Collector's lost Health Report would be. Settings are in the docker-compose section of `.env.example`.
 
+#### Backfill
+
+Live mode only fills the last half hour, so the trend starts empty. Backfill loads the past hours of Health Reports at once:
+
+```sh
+make backfill                              # 50 Stations, the last 24 hours
+make backfill SIM_STATIONS=500 HOURS=48
+```
+
+It runs `flask backfill-reports --stations N --hours H` in the API container. Outside Docker: `PYTHONPATH=src uv run flask --app station_health.app:create_app backfill-reports --help`.
+
+- **How**: it calls ingest's own validation and storage code directly rather than going through HTTP, and inserts in batches of 5,000. It registers the same fleet as the simulator, with the same profiles and readings, one Health Report per Station per whole minute from `HOURS` ago up to now. Unregistered Stations become Unverified Stations, as they do through ingest. Like the live simulator, it registers its fleet's other Stations as verified with the seed's Regions, so it resets any Region an admin changed for them.
+- **Limits**: `HOURS` can be at most raw retention (`RAW_RETENTION_HOURS`, 48), because ingest rejects older Health Reports. Running it again stores nothing new: it reports the Health Reports already stored as duplicates and ignores them. It prints how many it stored, ignored and rejected. At exactly 48 hours, the oldest partial hour is never summarised (catch-up only takes hours wholly within raw retention), and retention deletes it on the next worker cycle, so 47 hours or fewer is the useful maximum.
+- **Summaries**: backfill writes no summaries. The worker's next cycle catches up every completed hour, so the trend shows data within a minute (an hour is summarised 5 minutes after it ends).
+- **Speed**: 500 Stations over 24 hours (648,500 Health Reports) took about 20 seconds against the test suite's MySQL 8.4 container on a laptop.
+- Run it with the same `SIM_STATIONS` as `make simulate`, so live mode carries on with the same Stations. Backfill starts every profile at its first backfilled minute, so the goes-Silent Stations go Silent 10 minutes into the backfilled history.
+
 ### Authentication
 
 Every endpoint except `/livez`, `/readyz` and the docs needs an API key in the `X-API-Key` header. Keys map to three roles: `ingest` (the Collector), `read` (operators and the dashboard) and `admin` (Station Registry). Requests with no key, or an unknown key, get `401`. A key without the route's role gets `403`. docker-compose ships demo keys (`dev-ingest-key`, `dev-read-key`, `dev-admin-key`). In Swagger UI, click **Authorize** and paste a key.
@@ -209,7 +226,7 @@ src/station_health/
   summaries/      # hourly summaries: the pure per-Station hour summary and its table
   worker/         # scoring run, summary catch-up, retention ("run once at now") and the loop
   ops/            # liveness and readiness checks
-  simulator/      # plays the Collector: scenario profiles (pure) and live mode over HTTP
+  simulator/      # plays the Collector: scenario profiles (pure), live mode over HTTP, backfill
   migrations/     # Alembic migrations (Flask-Migrate)
 tests/            # integration tests against Testcontainers MySQL, unit tests of the scoring core
 ```

@@ -4,7 +4,7 @@
 # in-VM socket path for Docker Desktop, colima and OrbStack alike.
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ?= /var/run/docker.sock
 
-.PHONY: help install up down logs migrate seed simulate test lint format
+.PHONY: help install up down logs migrate seed simulate backfill test lint format
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  %-10s %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ seed: ## Load N Stations (default 1000) across 5 Regions into the running stack:
 
 simulate: ## Start the simulator (optional compose profile): make simulate SIM_STATIONS=100 SIM_SPEED=60
 	docker compose --profile simulator up --build -d simulator
+
+backfill: ## Load past Health Reports for the simulator's fleet: make backfill SIM_STATIONS=500 HOURS=24
+	docker compose exec api flask --app station_health.app:create_app backfill-reports --stations $(or $(SIM_STATIONS),50) --hours $(or $(HOURS),24)
 
 test: ## Run the test suite (needs Docker for Testcontainers)
 	uv run pytest

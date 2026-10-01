@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.engine import CursorResult
 
@@ -16,13 +16,34 @@ from station_health.stations.models import Station
 def register_unverified_station(station_id: str, now: datetime) -> None:
     """Add `station_id` as an Unverified Station with no Region, unless it is already registered.
 
+    Runs in the caller's transaction and does not commit.
+    """
+    register_unverified_stations({station_id}, now)
+
+
+def register_unverified_stations(station_ids: set[str], now: datetime) -> None:
+    """Add each Station not yet registered as an Unverified Station with no Region.
+
     Runs in the caller's transaction and does not commit. The common case, an already
     registered Station, is a plain read that takes no lock on the Station row.
     """
-    if db.session.scalar(select(exists().where(Station.station_id == station_id))):
+    registered = set(
+        db.session.scalars(select(Station.station_id).where(Station.station_id.in_(station_ids)))
+    )
+    new_station_ids = station_ids - registered
+    if not new_station_ids:
         return
     statement = insert(Station).values(
-        station_id=station_id, region=None, verified=False, created_at=now, updated_at=now
+        [
+            {
+                "station_id": station_id,
+                "region": None,
+                "verified": False,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for station_id in sorted(new_station_ids)
+        ]
     )
     db.session.execute(statement.on_duplicate_key_update(station_id=statement.inserted.station_id))
 

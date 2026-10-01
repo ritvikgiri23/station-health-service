@@ -12,7 +12,6 @@ service already has, which ingest ignores as duplicates, rather than doubling th
 import http.client
 import json
 import logging
-import random
 import threading
 import urllib.request
 from collections.abc import Callable, Sequence
@@ -21,7 +20,7 @@ from datetime import timedelta
 from typing import Any, Protocol
 
 from station_health.clock import Clock
-from station_health.simulator.profiles import SimStation, health_report
+from station_health.simulator.profiles import SimStation, health_report, reading_generators
 
 logger = logging.getLogger("station_health.simulator")
 
@@ -58,8 +57,7 @@ def run_live(
     for station in stations:
         if station.region is not None:
             api.register_station(station.station_id, station.region)
-    # One generator per Station, so a Station's readings do not depend on the fleet size.
-    rngs = {s.station_id: random.Random(f"{seed}:{s.station_id}") for s in stations}
+    rngs = reading_generators(stations, seed)
 
     real_start = clock()
     simulated_start = real_start.replace(second=0, microsecond=0) - backlog
