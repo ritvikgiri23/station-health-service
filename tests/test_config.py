@@ -56,3 +56,35 @@ def test_scoring_weights_are_configurable_together() -> None:
 
     assert settings.scoring.latency_weight == 0.3
     assert settings.scoring.error_weight == 0.7
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"FLAG_THRESHOLD": "low"}, "FLAG_THRESHOLD"),
+        ({"FLAG_THRESHOLD": "101"}, "FLAG_THRESHOLD"),
+        ({"CLEAR_THRESHOLD": "-1"}, "CLEAR_THRESHOLD"),
+        ({"FLAG_THRESHOLD": "70", "CLEAR_THRESHOLD": "60"}, "CLEAR_THRESHOLD"),
+        ({"MIN_REPORTS_TO_CLEAR": "0"}, "MIN_REPORTS_TO_CLEAR"),
+    ],
+)
+def test_service_refuses_to_start_with_invalid_flagging_settings(
+    overrides: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ConfigError, match=message):
+        Settings.from_env({"DATABASE_URL": "mysql+pymysql://u:p@h/db", **overrides})
+
+
+def test_flagging_thresholds_and_minimum_evidence_are_configurable() -> None:
+    settings = Settings.from_env(
+        {
+            "DATABASE_URL": "mysql+pymysql://u:p@h/db",
+            "FLAG_THRESHOLD": "50",
+            "CLEAR_THRESHOLD": "50",
+            "MIN_REPORTS_TO_CLEAR": "10",
+        }
+    )
+
+    assert settings.scoring.flag_threshold == 50
+    assert settings.scoring.clear_threshold == 50
+    assert settings.scoring.min_reports_to_clear == 10

@@ -61,16 +61,18 @@ def test_a_scoring_run_scores_a_station_from_its_health_reports_in_the_window(
         "hygiene": body["hygiene"],
         "scored_at": iso(START),
     }
-    assert body["hygiene"] == pytest.approx(
-        {
-            "score": 77,
-            "availability": 14 / 15,
-            "latency_score": 700 / 850,
-            "error_score": 1 - 0.5 / 3,
-            "p95_latency_ms": 300.0,
-            "report_count": 15,
-        }
-    )
+    assert body["hygiene"] == {
+        "score": 77,
+        "availability": pytest.approx(14 / 15),
+        "latency_score": pytest.approx(700 / 850),
+        "error_score": pytest.approx(1 - 0.5 / 3),
+        "p95_latency_ms": 300.0,
+        "report_count": 15,
+        "silent": False,
+        "poor_hygiene": False,
+        "flag_reason": None,
+        "flagged_since": None,
+    }
 
 
 def test_before_any_scoring_run_a_station_has_its_latest_report_but_no_score(
@@ -137,7 +139,7 @@ def test_each_scoring_run_rescores_from_its_own_window_and_updates_scored_at(
     assert body["scored_at"] == iso(later)
 
 
-def test_one_scoring_run_scores_every_station_with_health_reports_in_the_window(
+def test_one_scoring_run_scores_every_registered_station(
     client: FlaskClient, run_worker: RunWorker
 ) -> None:
     submit(client, station_id="ST-FAST", latency_ms=100)
@@ -146,11 +148,14 @@ def test_one_scoring_run_scores_every_station_with_health_reports_in_the_window(
 
     run = run_worker(START)
 
-    assert run.stations_scored == 2
+    assert run.stations_scored == 3
     assert run.scored_at == START
     assert station_health(client, "ST-FAST").json["hygiene"]["score"] == 100
     assert station_health(client, "ST-ERRORS").json["hygiene"]["score"] == 40
-    assert station_health(client, "ST-OLD").json["hygiene"] is None
+    # Nothing in its window: Silent.
+    old = station_health(client, "ST-OLD").json["hygiene"]
+    assert old["silent"] is True
+    assert old["score"] is None
 
 
 def test_a_station_offline_all_window_scores_0_without_latency_or_error_scores(
@@ -168,6 +173,10 @@ def test_a_station_offline_all_window_scores_0_without_latency_or_error_scores(
         "error_score": None,
         "p95_latency_ms": None,
         "report_count": 3,
+        "silent": False,
+        "poor_hygiene": True,
+        "flag_reason": "availability",
+        "flagged_since": iso(START),
     }
 
 

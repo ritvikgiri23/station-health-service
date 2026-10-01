@@ -96,12 +96,22 @@ def _scoring(env: Mapping[str, str]) -> ScoringConfig:
     # Weights summing to 1 keep the Hygiene Score within 0-100.
     if not math.isclose(latency_weight + error_weight, 1.0):
         raise ConfigError("LATENCY_WEIGHT and ERROR_WEIGHT must add up to 1")
+    flag_threshold = _score(env, "FLAG_THRESHOLD", DEFAULT_SCORING.flag_threshold)
+    clear_threshold = _score(env, "CLEAR_THRESHOLD", DEFAULT_SCORING.clear_threshold)
+    # A Clear Threshold below the Flag Threshold would clear Stations that are still flagged.
+    if clear_threshold < flag_threshold:
+        raise ConfigError("CLEAR_THRESHOLD must be at least FLAG_THRESHOLD")
     return ScoringConfig(
         latency_good_ms=latency_good_ms,
         latency_bad_ms=latency_bad_ms,
         error_limit=error_limit,
         latency_weight=latency_weight,
         error_weight=error_weight,
+        flag_threshold=flag_threshold,
+        clear_threshold=clear_threshold,
+        min_reports_to_clear=_positive_int(
+            env, "MIN_REPORTS_TO_CLEAR", DEFAULT_SCORING.min_reports_to_clear
+        ),
     )
 
 
@@ -124,6 +134,20 @@ def _positive_int(env: Mapping[str, str], name: str, default: int) -> int:
         raise ConfigError(f"{name} must be a positive integer") from None
     if value <= 0:
         raise ConfigError(f"{name} must be a positive integer")
+    return value
+
+
+def _score(env: Mapping[str, str], name: str, default: int) -> int:
+    """A Hygiene Score threshold: an integer from 0 to 100."""
+    raw = env.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ConfigError(f"{name} must be an integer from 0 to 100") from None
+    if not 0 <= value <= 100:
+        raise ConfigError(f"{name} must be an integer from 0 to 100")
     return value
 
 

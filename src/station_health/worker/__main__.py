@@ -37,7 +37,12 @@ def run_forever(app: Flask, stop: threading.Event) -> None:
                 run = run_scoring_once(current_time())
             logger.info(
                 "scoring run",
-                extra={"stations_scored": run.stations_scored, "duration_ms": run.duration_ms},
+                extra={
+                    "stations_scored": run.stations_scored,
+                    "stations_written": run.stations_written,
+                    "flag_changes": run.flag_changes,
+                    "duration_ms": run.duration_ms,
+                },
             )
         except Exception:
             # A failed run (e.g. the database restarting) must not stop the worker.
