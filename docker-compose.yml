@@ -55,5 +55,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: plays the Collector. Start it with `make simulate` or
+  # `docker compose --profile simulator up -d simulator`.
+  simulator:
+    build: .
+    profiles: ["simulator"]
+    # Talks to the API only, so it skips the migrations the default entrypoint runs.
+    entrypoint: ["python", "-m", "station_health.simulator"]
+    command: []
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SIM_API_URL: http://api:8000
+      SIM_INGEST_KEY: ${SIM_INGEST_KEY:-dev-ingest-key}
+      SIM_ADMIN_KEY: ${SIM_ADMIN_KEY:-dev-admin-key}
+      SIM_STATIONS: ${SIM_STATIONS:-50}
+      SIM_SPEED: ${SIM_SPEED:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mysql-data:

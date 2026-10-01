@@ -14,6 +14,11 @@ def seed_station_id(number: int) -> str:
     return f"ST-{number:06d}"
 
 
+def seed_region(number: int) -> str:
+    """Regions are assigned in turn."""
+    return SEED_REGIONS[(number - 1) % len(SEED_REGIONS)]
+
+
 @click.command("seed-stations")
 @click.option(
     "--count",
@@ -32,7 +37,5 @@ def seed_stations(count: int) -> None:
     now = current_time()
     for start in range(1, count + 1, BATCH_SIZE):
         numbers = range(start, min(start + BATCH_SIZE, count + 1))
-        register_stations(
-            {seed_station_id(n): SEED_REGIONS[(n - 1) % len(SEED_REGIONS)] for n in numbers}, now
-        )
+        register_stations({seed_station_id(n): seed_region(n) for n in numbers}, now)
     click.echo(f"Seeded {count} Stations across {min(count, len(SEED_REGIONS))} Regions.")

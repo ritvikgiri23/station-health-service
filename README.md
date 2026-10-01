@@ -23,7 +23,7 @@ This builds the image, starts MySQL 8, the API and the worker, and applies datab
 | http://localhost:8000/livez | Liveness: `200` while the process is up |
 | http://localhost:8000/readyz | Readiness: `503` when the database is unreachable; otherwise `200`, with status `degraded` when the last scoring run is older than 3 minutes (`SCORING_STALE_AFTER_SECONDS`) or there has been none |
 
-Other targets: `make logs` (follow API and worker logs), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
+Other targets: `make logs` (follow API and worker logs), `make simulate` (start the [simulator](#simulator)), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
 
 ### Try it
 
@@ -126,6 +126,35 @@ After each scoring run the worker writes hourly summaries, then deletes expired 
 - **Retention**: raw Health Reports older than `RAW_RETENTION_HOURS` (48) are deleted. That is the same cut-off ingest applies. Hourly summaries are deleted once their hour started more than `SUMMARY_RETENTION_DAYS` (30) before the current hour. Deletes run in batches of `RETENTION_BATCH_SIZE` rows (10,000), each committed on its own. In production the tables would be partitioned by day, and whole partitions dropped instead.
 - Each step logs its result. A step that fails is logged and does not stop the others.
 
+### Simulator
+
+The simulator plays the Collector for a fleet of Stations. It sends one Health Report per Station per simulated minute through the HTTP API, using an `ingest` key. It is an optional docker-compose profile, so `make up` doesn't start it.
+
+```sh
+make simulate                              # 50 Stations at 60x
+make simulate SIM_STATIONS=200 SIM_SPEED=120
+docker compose logs -f simulator           # one line per simulated minute
+docker compose --profile simulator stop simulator
+```
+
+Outside Docker: `PYTHONPATH=src uv run python -m station_health.simulator --help`.
+
+- **Speed**: ingest rejects Health Reports from the future, so simulated time can't run ahead of the clock. Instead it starts 30 minutes in the past (`SIM_BACKLOG_MINUTES`) and runs `SIM_SPEED` times faster than real time until it catches up, then keeps pace with the clock. At the default 60x, the Scoring Window is full after about 30 seconds, so the worker's next scoring run (within a minute) shows every profile. The speed must be above 1, or simulated time never catches up. Timestamps fall on whole minutes, so if the simulator restarts, the Health Reports it resends are duplicates, which ingest ignores.
+- **Profiles**: assigned in turn, so half the fleet is healthy and a tenth has each other profile. With the default scoring settings:
+
+  | Profile | Behaviour | Outcome |
+  |---|---|---|
+  | healthy | online, 40–140 ms, an occasional error | not flagged, score about 100 |
+  | flapping | Offline every other minute | Poor Hygiene, `availability`, score about 50 |
+  | slow | 1100–1500 ms, and an error every other minute | Poor Hygiene, `latency`, score about 50 |
+  | error-prone | fast, 3–5 errors per Health Report | Poor Hygiene, `errors`, score 40 |
+  | goes Silent | healthy for its first 10 simulated minutes, then nothing | Poor Hygiene, `silent` |
+  | unregistered | healthy, never registered | an Unverified Station |
+
+  A Station that is slow and nothing else scores 60, which is not below the Flag Threshold, because latency carries only 40% of the weight. That is why the slow profile also has a trickle of errors.
+- **Stations**: before it starts, the simulator registers its Stations with the `admin` key (`SIM_ADMIN_KEY`). It uses the same IDs and Regions as `make seed` (ST-000001, ...), so the two agree. Unregistered Stations are ST-UNREG-0001, and so on.
+- A Health Report the API doesn't accept, or that can't reach it, is logged and dropped, as a real Collector's lost Health Report would be. Settings are in the docker-compose section of `.env.example`.
+
 ### Authentication
 
 Every endpoint except `/livez`, `/readyz` and the docs needs an API key in the `X-API-Key` header. Keys map to three roles: `ingest` (the Collector), `read` (operators and the dashboard) and `admin` (Station Registry). Requests with no key, or an unknown key, get `401`. A key without the route's role gets `403`. docker-compose ships demo keys (`dev-ingest-key`, `dev-read-key`, `dev-admin-key`). In Swagger UI, click **Authorize** and paste a key.
@@ -180,6 +209,7 @@ src/station_health/
   summaries/      # hourly summaries: the pure per-Station hour summary and its table
   worker/         # scoring run, summary catch-up, retention ("run once at now") and the loop
   ops/            # liveness and readiness checks
+  simulator/      # plays the Collector: scenario profiles (pure) and live mode over HTTP
   migrations/     # Alembic migrations (Flask-Migrate)
 tests/            # integration tests against Testcontainers MySQL, unit tests of the scoring core
 ```

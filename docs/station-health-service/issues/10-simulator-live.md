@@ -8,8 +8,8 @@ Spec: stories 67–69, 71; "Simulator".
 
 **Status:** ready-for-agent
 
-- [ ] Profiles: healthy, flapping, slow, error-prone, goes Silent, unregistered ID
-- [ ] Speed multiplier compresses simulated time
-- [ ] Sends via the HTTP API with an ingest key
-- [ ] Runnable as an optional docker-compose profile; documented in README
-- [ ] Smoke test: after a simulated window, each profile yields the expected outcome (Availability / latency / errors / silent Flag Reasons; unregistered → Unverified Station; healthy → not flagged)
+- [x] Profiles: healthy, flapping, slow, error-prone, goes Silent, unregistered ID
+- [x] Speed multiplier compresses simulated time
+- [x] Sends via the HTTP API with an ingest key
+- [x] Runnable as an optional docker-compose profile; documented in README
+- [x] Smoke test: after a simulated window, each profile yields the expected outcome (Availability / latency / errors / silent Flag Reasons; unregistered → Unverified Station; healthy → not flagged)
