@@ -8,14 +8,14 @@ Spec: stories 1–10, 66; "API contracts → Ingest"; ADR-0001 (primary key, no 
 
 **Status:** ready-for-agent
 
-- [ ] A valid new Health Report returns 201 and is stored
-- [ ] Resubmitting the same (`station_id`, `timestamp`) returns 200 and does not create a second record
-- [ ] Malformed payloads (missing fields, wrong types, unknown connectivity status, negative latency or Error Count) return 422 with the consistent JSON error shape
-- [ ] A timestamp more than 5 minutes in the future (configurable) returns 422
-- [ ] A timestamp older than raw retention (48h, configurable) returns 422
-- [ ] Late / out-of-order Health Reports are stored
-- [ ] A Health Report for an unknown `station_id` auto-registers an Unverified Station with no Region
-- [ ] Health Report storage has (`station_id`, `timestamp`) as primary key and no foreign key to Station
-- [ ] No key → 401; key without the required role → 403; keys and their roles come from configuration
-- [ ] The API-key security scheme appears in OpenAPI and works from Swagger UI
-- [ ] Integration tests cover every criterion above through the HTTP API
+- [x] A valid new Health Report returns 201 and is stored
+- [x] Resubmitting the same (`station_id`, `timestamp`) returns 200 and does not create a second record
+- [x] Malformed payloads (missing fields, wrong types, unknown connectivity status, negative latency or Error Count) return 422 with the consistent JSON error shape
+- [x] A timestamp more than 5 minutes in the future (configurable) returns 422
+- [x] A timestamp older than raw retention (48h, configurable) returns 422
+- [x] Late / out-of-order Health Reports are stored
+- [x] A Health Report for an unknown `station_id` auto-registers an Unverified Station with no Region
+- [x] Health Report storage has (`station_id`, `timestamp`) as primary key and no foreign key to Station
+- [x] No key → 401; key without the required role → 403; keys and their roles come from configuration
+- [x] The API-key security scheme appears in OpenAPI and works from Swagger UI
+- [x] Integration tests cover every criterion above through the HTTP API

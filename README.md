@@ -25,6 +25,32 @@ This builds the image, starts MySQL 8 and the API, and applies database migratio
 
 Other targets: `make logs` (follow API logs), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
 
+### Try it
+
+```sh
+curl -i -X POST localhost:8000/health-reports \
+  -H 'X-API-Key: dev-ingest-key' -H 'Content-Type: application/json' \
+  -d "{\"station_id\": \"ST-0001\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+       \"connectivity_status\": \"online\", \"latency_ms\": 120, \"error_count\": 0,
+       \"firmware_version\": \"1.4.2\"}"
+```
+
+A new Health Report returns `201`. Sending the same `station_id` and `timestamp` again returns `200`, and nothing is stored a second time. A Station that isn't in the Station Registry yet is registered as an Unverified Station with no Region. See it with `curl localhost:8000/stations/ST-0001 -H 'X-API-Key: dev-admin-key'`.
+
+Ingest assumptions:
+- `timestamp` must include a timezone offset (for example `Z` or `+05:30`). It is stored and returned in UTC, so the same instant written with different offsets is the same Health Report.
+- When a second Health Report arrives with the same `station_id` and `timestamp`, the first one wins. The `200` response returns the stored Health Report.
+- Only the six specified fields are accepted. An unknown field gets `422`, so that typos aren't silently dropped.
+- A body that isn't valid JSON gets `400`. A JSON body that fails validation gets `422`.
+
+### Authentication
+
+Every endpoint except `/livez`, `/readyz` and the docs needs an API key in the `X-API-Key` header. Keys map to three roles: `ingest` (the Collector), `read` (operators and the dashboard) and `admin` (Station Registry). Requests with no key, or an unknown key, get `401`. A key without the route's role gets `403`. docker-compose ships demo keys (`dev-ingest-key`, `dev-read-key`, `dev-admin-key`). In Swagger UI, click **Authorize** and paste a key.
+
+### Errors
+
+Every error response has the same JSON shape: `{"code": 422, "status": "Unprocessable Entity", "message": "...", "errors": {...}}`. `message` and `errors` appear when relevant. For validation failures, `errors.json` maps each field to its messages.
+
 ### Configuration
 
 All configuration comes from environment variables. `.env.example` documents every setting along with its default. To override any of them, copy it to `.env`; docker-compose picks that file up automatically. Without a `.env`, the defaults just work.
@@ -59,6 +85,11 @@ src/station_health/
   config.py       # Settings, read from environment variables
   extensions.py   # SQLAlchemy, Flask-Migrate and flask-smorest instances
   log.py          # JSON log formatter and request-ID middleware
+  clock.py        # the injectable clock; tests control "now"
+  errors.py       # the one JSON error shape
+  auth/           # API keys and roles, applied per route
+  reports/        # Health Report ingest: schema, validation, idempotent storage
+  stations/       # Station Registry
   ops/            # liveness and readiness checks
   migrations/     # Alembic migrations (Flask-Migrate)
 tests/            # integration tests against Testcontainers MySQL

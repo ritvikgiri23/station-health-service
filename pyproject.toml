@@ -22,6 +22,7 @@ dev = [
     "openapi-spec-validator==0.9.0",
     "ruff==0.16.9",
     "mypy==2.3.1",
+    "types-pymysql==1.2.0.20260923",
 ]
 
 [build-system]
@@ -56,6 +57,11 @@ exclude = ["src/station_health/migrations/"]
 [[tool.mypy.overrides]]
 module = ["station_health.*.routes"]
 disallow_untyped_decorators = false
+
+# Test responses' `.json` is Optional; a missing body fails the test anyway.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disable_error_code = ["index"]
 
 [[tool.mypy.overrides]]
 module = ["flask_smorest.*", "flask_migrate.*", "testcontainers.*", "openapi_spec_validator.*"]

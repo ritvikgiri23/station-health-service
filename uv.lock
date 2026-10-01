@@ -874,6 +874,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "testcontainers", extra = ["mysql"] },
+    { name = "types-pymysql" },
 ]
 
 [package.metadata]
@@ -896,6 +897,7 @@ dev = [
     { name = "pytest", specifier = "==9.1.1" },
     { name = "ruff", specifier = "==0.16.9" },
     { name = "testcontainers", extras = ["mysql"], specifier = "==4.15.0" },
+    { name = "types-pymysql", specifier = "==1.2.0.20260923" },
 ]
 
 [[package]]
@@ -918,6 +920,15 @@ wheels = [
 mysql = [
     { name = "pymysql", extra = ["rsa"] },
     { name = "sqlalchemy" },
+]
+
+[[package]]
+name = "types-pymysql"
+version = "1.2.0.20260923"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/cb/2c4017b0da85cbed15296b0569141f2c56790752aa4facc60ea199db24df/types_pymysql-1.2.0.20260923.tar.gz", hash = "sha256:2d02420956deeed7366c3b2b7dfaac3b33ad800d754327857f7b38f59751a59c", size = 22943, upload-time = "2026-09-23T06:52:06.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/f3/75928f071b26151423e7a681defd6eee6fa8181de70cb22ea2211c295d39/types_pymysql-1.2.0.20260923-py3-none-any.whl", hash = "sha256:2042fc2d0745eba181c3070221fdc9ac12baaa4908f79c1cb0f953c8c44efcc5", size = 23383, upload-time = "2026-09-23T06:52:04.912Z" },
 ]
 
 [[package]]

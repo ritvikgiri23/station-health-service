@@ -10,6 +10,7 @@ class Base(DeclarativeBase):
     pass
 
 
-db = SQLAlchemy(model_class=Base)
+# Objects stay usable after commit without a reload query (ingest returns what it stored).
+db = SQLAlchemy(model_class=Base, session_options={"expire_on_commit": False})
 migrate = Migrate()
 api = Api()

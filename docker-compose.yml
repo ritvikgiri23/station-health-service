@@ -25,6 +25,9 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://station_health:station_health@mysql:3306/station_health}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_KEYS_INGEST: ${API_KEYS_INGEST:-dev-ingest-key}
+      API_KEYS_READ: ${API_KEYS_READ:-dev-read-key}
+      API_KEYS_ADMIN: ${API_KEYS_ADMIN:-dev-admin-key}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

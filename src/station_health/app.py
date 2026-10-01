@@ -4,16 +4,21 @@ from pathlib import Path
 
 from flask import Flask
 
+from station_health import runtime
+from station_health.auth.api_keys import register_security_scheme
+from station_health.clock import Clock, system_clock
 from station_health.config import Settings
 from station_health.extensions import api, db, migrate
 from station_health.log import configure_logging, init_request_logging
 from station_health.ops.routes import blp as ops_blp
+from station_health.reports.routes import blp as reports_blp
+from station_health.stations.routes import blp as stations_blp
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 DATABASE_TIMEOUT_SECONDS = 3
 
 
-def create_app(settings: Settings | None = None) -> Flask:
+def create_app(settings: Settings | None = None, clock: Clock = system_clock) -> Flask:
     settings = settings or Settings.from_env()
     configure_logging(settings.log_level)
 
@@ -36,12 +41,16 @@ def create_app(settings: Settings | None = None) -> Flask:
         OPENAPI_SWAGGER_UI_PATH="/docs",
         OPENAPI_SWAGGER_UI_URL="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/",
     )
+    runtime.install(app, settings, clock)
 
     db.init_app(app)
     migrate.init_app(app, db, directory=str(MIGRATIONS_DIR))
     api.init_app(app)
+    register_security_scheme(api)
     init_request_logging(app)
 
     api.register_blueprint(ops_blp)
+    api.register_blueprint(reports_blp)
+    api.register_blueprint(stations_blp)
 
     return app

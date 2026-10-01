@@ -1,15 +1,18 @@
 """Integration test harness: the real Flask app against a real MySQL 8 from Testcontainers."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient
 from flask_migrate import upgrade
+from sqlalchemy import text
 from testcontainers.community.mysql import MySqlContainer
 
 from station_health.app import create_app
 from station_health.config import Settings
+from station_health.extensions import db
+from tests.support import START, TEST_API_KEYS, FakeClock
 
 MYSQL_IMAGE = "mysql:8.4"
 
@@ -21,18 +24,51 @@ def database_url() -> Iterator[str]:
 
 
 @pytest.fixture(scope="session")
-def settings(database_url: str) -> Settings:
-    return Settings.from_env({"DATABASE_URL": database_url, "LOG_LEVEL": "WARNING"})
+def test_env(database_url: str) -> dict[str, str]:
+    return {"DATABASE_URL": database_url, "LOG_LEVEL": "WARNING", **TEST_API_KEYS}
 
 
 @pytest.fixture(scope="session")
-def app(settings: Settings) -> Flask:
-    app = create_app(settings)
+def settings(test_env: dict[str, str]) -> Settings:
+    return Settings.from_env(test_env)
+
+
+@pytest.fixture(scope="session")
+def clock() -> FakeClock:
+    return FakeClock()
+
+
+@pytest.fixture(scope="session")
+def migrated_app(settings: Settings, clock: FakeClock) -> Flask:
+    app = create_app(settings, clock=clock)
     with app.app_context():
         upgrade()
     return app
 
 
 @pytest.fixture
+def app(migrated_app: Flask, clock: FakeClock) -> Flask:
+    """The shared app, with an empty database and the clock back at START."""
+    clock.now = START
+    with migrated_app.app_context():
+        tables = [t.name for t in db.metadata.sorted_tables]
+        with db.engine.begin() as connection:
+            for table in tables:
+                connection.execute(text(f"DELETE FROM `{table}`"))
+    return migrated_app
+
+
+@pytest.fixture
 def client(app: Flask) -> FlaskClient:
     return app.test_client()
+
+
+@pytest.fixture
+def make_client(test_env: dict[str, str], app: Flask) -> Callable[..., FlaskClient]:
+    """A client for an app with some settings overridden, sharing the (emptied) test database."""
+
+    def build(**overrides: str) -> FlaskClient:
+        settings = Settings.from_env({**test_env, **overrides})
+        return create_app(settings, clock=FakeClock(START)).test_client()
+
+    return build
