@@ -8,13 +8,13 @@ Spec: `docs/station-health-service/spec.md` (stories 60, 62, 64, 65, 74–76).
 
 **Status:** ready-for-agent
 
-- [ ] One docker-compose command starts the API and MySQL 8; migrations are applied at startup or via one documented command
-- [ ] Liveness check returns OK when the process is up
-- [ ] Readiness check fails when the database is unreachable and passes when it is reachable
-- [ ] Swagger UI and the generated OpenAPI document are served
-- [ ] Logs are JSON and carry a per-request ID
-- [ ] All configuration comes from environment variables; an example env file documents every setting
-- [ ] Integration test harness boots the app against a Testcontainers MySQL; a test for liveness/readiness passes
-- [ ] A test asserts the generated OpenAPI document is valid
-- [ ] README covers prerequisites, run, and test instructions
-- [ ] ruff and mypy run clean via a documented make target
+- [x] One docker-compose command starts the API and MySQL 8; migrations are applied at startup or via one documented command
+- [x] Liveness check returns OK when the process is up
+- [x] Readiness check fails when the database is unreachable and passes when it is reachable
+- [x] Swagger UI and the generated OpenAPI document are served
+- [x] Logs are JSON and carry a per-request ID
+- [x] All configuration comes from environment variables; an example env file documents every setting
+- [x] Integration test harness boots the app against a Testcontainers MySQL; a test for liveness/readiness passes
+- [x] A test asserts the generated OpenAPI document is valid
+- [x] README covers prerequisites, run, and test instructions
+- [x] ruff and mypy run clean via a documented make target
