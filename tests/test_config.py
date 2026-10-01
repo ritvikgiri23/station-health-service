@@ -25,6 +25,7 @@ def test_service_refuses_to_start_with_an_unknown_log_level() -> None:
         "RETENTION_BATCH_SIZE",
         "SCORING_WINDOW_MINUTES",
         "WORKER_INTERVAL_SECONDS",
+        "SCORING_STALE_AFTER_SECONDS",
     ],
 )
 @pytest.mark.parametrize("value", ["soon", "-5", "0"])

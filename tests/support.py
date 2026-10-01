@@ -1,5 +1,6 @@
 """Shared test helpers: a controllable clock, API keys, and Health Report payloads."""
 
+import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -24,6 +25,21 @@ class FakeClock:
 
     def __call__(self) -> datetime:
         return self.now
+
+
+class OneCycle(threading.Event):
+    """A stop event that lets the worker loop run exactly one cycle."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.checks = 0
+
+    def is_set(self) -> bool:
+        self.checks += 1
+        return self.checks > 1
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return True
 
 
 def auth(key: str) -> dict[str, str]:

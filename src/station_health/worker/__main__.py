@@ -3,7 +3,9 @@
 A thin loop: every WORKER_INTERVAL_SECONDS (start to start), until SIGTERM or SIGINT,
 a scoring run, then hourly summary catch-up, then retention clean-up. Catch-up runs
 before retention so an hour is summarised before its Health Reports can expire. Each
-step fails on its own, so a failing clean-up never stops scoring.
+step fails on its own, so a failing clean-up never stops scoring. Each step logs one
+line with its result, so the scoring run's line carries Stations scored, Flag Changes,
+the Silent count and duration.
 """
 
 import logging
@@ -48,11 +50,18 @@ def run_forever(app: Flask, stop: threading.Event) -> None:
 
 
 def _step(app: Flask, name: str, step: Callable[[datetime], Any]) -> None:
-    """Run one worker step as of now and log its result's fields."""
+    """Run one worker step as of now and log its result's fields.
+
+    A step returns None when it skipped: only a scoring run does, when another worker
+    holds its lock.
+    """
     try:
         with app.app_context():
             result = step(current_time())
-        logger.info(name, extra=asdict(result))
+        if result is None:
+            logger.info(f"{name} skipped: another worker holds the lock")
+        else:
+            logger.info(name, extra=asdict(result))
     except Exception:
         # A failed step (e.g. the database restarting) must not stop the worker.
         logger.exception(f"{name} failed")

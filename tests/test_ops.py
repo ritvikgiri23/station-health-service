@@ -1,11 +1,17 @@
 import json
+from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 from flask.testing import FlaskClient
 
 from station_health.app import create_app
 from station_health.config import Settings
+from station_health.worker.scoring_run import ScoringRun
+from tests.support import START, FakeClock, iso
+
+RunWorker = Callable[[datetime], ScoringRun]
 
 
 @pytest.fixture
@@ -24,11 +30,60 @@ def test_liveness_reports_ok(client: FlaskClient) -> None:
     assert response.json == {"status": "ok"}
 
 
-def test_readiness_passes_when_database_is_reachable(client: FlaskClient) -> None:
+def test_readiness_passes_when_the_database_is_reachable_and_scores_are_fresh(
+    client: FlaskClient, clock: FakeClock, run_worker: RunWorker
+) -> None:
+    run_worker(START)
+    clock.now = START + timedelta(minutes=3)
+
     response = client.get("/readyz")
 
     assert response.status_code == 200
-    assert response.json == {"status": "ok", "checks": {"database": "ok"}}
+    assert response.json == {
+        "status": "ok",
+        "checks": {"database": "ok", "scoring": "ok"},
+        "scored_at": iso(START),
+    }
+
+
+def test_readiness_reports_degraded_when_the_last_scoring_run_is_over_3_minutes_old(
+    client: FlaskClient, clock: FakeClock, run_worker: RunWorker
+) -> None:
+    run_worker(START)
+    clock.now = START + timedelta(minutes=3, seconds=1)
+
+    response = client.get("/readyz")
+
+    # Still ready: the API itself serves; only its scores are old.
+    assert response.status_code == 200
+    assert response.json == {
+        "status": "degraded",
+        "checks": {"database": "ok", "scoring": "stale"},
+        "scored_at": iso(START),
+    }
+
+
+def test_readiness_reports_degraded_before_any_scoring_run(client: FlaskClient) -> None:
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "status": "degraded",
+        "checks": {"database": "ok", "scoring": "never_run"},
+        "scored_at": None,
+    }
+
+
+def test_the_stale_score_threshold_is_configurable(
+    make_client: Callable[..., FlaskClient], run_worker: RunWorker
+) -> None:
+    run_worker(START - timedelta(seconds=31))
+    client = make_client(SCORING_STALE_AFTER_SECONDS="30")
+
+    response = client.get("/readyz")
+
+    assert response.json["status"] == "degraded"
+    assert response.json["checks"]["scoring"] == "stale"
 
 
 def test_readiness_fails_when_database_is_unreachable(
@@ -37,7 +92,11 @@ def test_readiness_fails_when_database_is_unreachable(
     response = unreachable_db_client.get("/readyz")
 
     assert response.status_code == 503
-    assert response.json == {"status": "unavailable", "checks": {"database": "unreachable"}}
+    assert response.json == {
+        "status": "unavailable",
+        "checks": {"database": "unreachable", "scoring": "unknown"},
+        "scored_at": None,
+    }
 
 
 def test_liveness_does_not_depend_on_the_database(

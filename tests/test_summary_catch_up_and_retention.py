@@ -1,6 +1,5 @@
 """The worker's hourly summary catch-up and retention clean-up."""
 
-import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,7 +16,7 @@ from station_health.summaries.models import HourlySummary
 from station_health.worker.__main__ import run_forever
 from station_health.worker.retention import Retention, run_retention
 from station_health.worker.summary_catch_up import SummaryCatchUp, run_summary_catch_up
-from tests.support import INGEST_KEY, FakeClock, auth, health_report, iso
+from tests.support import INGEST_KEY, FakeClock, OneCycle, auth, health_report, iso
 
 H9 = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 HOUR = timedelta(hours=1)
@@ -207,21 +206,6 @@ def test_retention_deletes_hourly_summaries_older_than_summary_retention(
 
     assert retention(now) == Retention(0, 3)
     assert summaries(app) == [(limit, "ST-A"), (now - HOUR, "ST-A")]
-
-
-class OneCycle(threading.Event):
-    """A stop event that lets the worker loop run exactly one cycle."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.checks = 0
-
-    def is_set(self) -> bool:
-        self.checks += 1
-        return self.checks > 1
-
-    def wait(self, timeout: float | None = None) -> bool:
-        return True
 
 
 def test_each_worker_cycle_scores_then_catches_up_summaries_then_applies_retention(

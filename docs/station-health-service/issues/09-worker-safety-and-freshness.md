@@ -8,8 +8,8 @@ Spec: stories 32, 61, 63; ADR-0003.
 
 **Status:** ready-for-agent
 
-- [ ] A scoring run takes a MySQL named lock and skips (does not wait) if it is held
-- [ ] Two concurrent runs at the same `now` produce no duplicate Flag Changes
-- [ ] Readiness reports degraded when the last scoring run is older than ~3 minutes (configurable)
-- [ ] Each run logs one structured line: Stations scored, Flag Changes, Silent count, duration
-- [ ] Integration tests cover lock contention and stale-score readiness
+- [x] A scoring run takes a MySQL named lock and skips (does not wait) if it is held
+- [x] Two concurrent runs at the same `now` produce no duplicate Flag Changes
+- [x] Readiness reports degraded when the last scoring run is older than ~3 minutes (configurable)
+- [x] Each run logs one structured line: Stations scored, Flag Changes, Silent count, duration
+- [x] Integration tests cover lock contention and stale-score readiness

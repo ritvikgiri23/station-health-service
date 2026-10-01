@@ -14,14 +14,14 @@ A Flask microservice that ingests Health Reports from the NOC Collector and judg
 make up        # docker compose up --build -d
 ```
 
-This builds the image, starts MySQL 8, the API and the worker, and applies database migrations (`flask db upgrade`) before the API starts serving. The worker is the same image running `python -m station_health.worker`: every 60 seconds (`WORKER_INTERVAL_SECONDS`) it performs a scoring run, catches up hourly summaries and applies retention (see [Hourly summaries and retention](#hourly-summaries-and-retention)). Once it is up:
+This builds the image, starts MySQL 8, the API and the worker, and applies database migrations (`flask db upgrade`) before the API starts serving. The worker is the same image running `python -m station_health.worker`: every 60 seconds (`WORKER_INTERVAL_SECONDS`) it performs a scoring run, catches up hourly summaries and applies retention (see [Hourly summaries and retention](#hourly-summaries-and-retention)). A scoring run takes a MySQL named lock and skips if another worker holds it, so running two workers (e.g. during a deploy) never duplicates Flag Changes. Each run logs one line with Stations scored, Flag Changes, the Silent count and duration. Once it is up:
 
 | URL | What |
 |---|---|
 | http://localhost:8000/docs | Swagger UI |
 | http://localhost:8000/openapi.json | Generated OpenAPI document |
 | http://localhost:8000/livez | Liveness: `200` while the process is up |
-| http://localhost:8000/readyz | Readiness: `200` when the database is reachable, `503` when it is not |
+| http://localhost:8000/readyz | Readiness: `503` when the database is unreachable; otherwise `200`, with status `degraded` when the last scoring run is older than 3 minutes (`SCORING_STALE_AFTER_SECONDS`) or there has been none |
 
 Other targets: `make logs` (follow API and worker logs), `make migrate` (re-apply migrations in the running container), `make down` (stop; `docker compose down -v` also drops the database volume).
 

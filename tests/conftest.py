@@ -82,6 +82,8 @@ def run_worker(app: Flask) -> Callable[[datetime], ScoringRun]:
 
     def run(now: datetime) -> ScoringRun:
         with app.app_context():
-            return run_scoring_once(now)
+            scoring_run = run_scoring_once(now)
+        assert scoring_run is not None, "the scoring run was skipped: the lock was held"
+        return scoring_run
 
     return run

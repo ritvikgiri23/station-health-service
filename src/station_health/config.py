@@ -25,6 +25,7 @@ DEFAULT_SUMMARY_RETENTION = timedelta(days=30)
 DEFAULT_RETENTION_BATCH_SIZE = 10_000
 DEFAULT_SCORING_WINDOW = timedelta(minutes=15)
 DEFAULT_WORKER_INTERVAL = timedelta(seconds=60)
+DEFAULT_SCORING_STALE_AFTER = timedelta(minutes=3)
 DEFAULT_SCORING = ScoringConfig()
 
 
@@ -44,6 +45,8 @@ class Settings:
     retention_batch_size: int = DEFAULT_RETENTION_BATCH_SIZE
     scoring_window: timedelta = DEFAULT_SCORING_WINDOW
     worker_interval: timedelta = DEFAULT_WORKER_INTERVAL
+    # Readiness reports degraded when the last scoring run is older than this.
+    scoring_stale_after: timedelta = DEFAULT_SCORING_STALE_AFTER
     scoring: ScoringConfig = DEFAULT_SCORING
 
     @classmethod
@@ -88,6 +91,13 @@ class Settings:
             worker_interval=timedelta(
                 seconds=_positive_int(
                     env, "WORKER_INTERVAL_SECONDS", int(DEFAULT_WORKER_INTERVAL.total_seconds())
+                )
+            ),
+            scoring_stale_after=timedelta(
+                seconds=_positive_int(
+                    env,
+                    "SCORING_STALE_AFTER_SECONDS",
+                    int(DEFAULT_SCORING_STALE_AFTER.total_seconds()),
                 )
             ),
             scoring=_scoring(env),

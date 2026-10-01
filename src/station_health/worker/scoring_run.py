@@ -1,20 +1,25 @@
 """The scoring run: the worker's "run once at `now`" entry point (ADR-0003).
 
-Needs an app context. Reads every Health Report in the Scoring Window in one query,
-assesses each registered Station through the scoring core against its current Station
-health, upserts the Station health rows whose visible state changed, appends Flag Changes,
-and records the run.
+Needs an app context. Takes a MySQL named lock first and skips the run if another worker
+holds it, so two workers (e.g. during a deploy) never score at once. Reads every Health
+Report in the Scoring Window in one query, assesses each registered Station through the
+scoring core against its current Station health, upserts the Station health rows whose
+visible state changed, appends Flag Changes, and records the run.
 """
 
+import logging
 import time
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Table, insert, select
+from sqlalchemy import Table, insert, select, text
 from sqlalchemy.dialects.mysql import Insert
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.exc import SQLAlchemyError
 
 from station_health.extensions import Base, db
 from station_health.health.models import (
@@ -35,6 +40,11 @@ from station_health.scoring import (
 )
 from station_health.stations.models import Station
 
+logger = logging.getLogger(__name__)
+
+# The MySQL named lock a scoring run holds, so concurrent workers never overlap.
+SCORING_LOCK = "station_health.scoring_run"
+
 # The Station health columns whose change makes a scoring run write the row.
 VISIBLE_STATE = ("hygiene_score", "silent", "poor_hygiene", "flag_reason", "firmware_version")
 
@@ -46,11 +56,48 @@ class ScoringRun:
     # Station health rows written: those whose visible state changed, or that were new.
     stations_written: int
     flag_changes: int
+    silent_stations: int
     duration_ms: float
 
 
-def run_scoring_once(now: datetime) -> ScoringRun:
-    """Assess every registered Station from its Scoring Window ending at `now`."""
+def run_scoring_once(now: datetime) -> ScoringRun | None:
+    """Assess every registered Station from its Scoring Window ending at `now`.
+
+    Returns None, having written nothing, if another scoring run holds the lock.
+    """
+    with _scoring_lock() as acquired:
+        if not acquired:
+            return None
+        # Start a new transaction, so reads see everything committed before the lock was
+        # taken, including the previous run's writes.
+        db.session.rollback()
+        return _score_all_stations(now)
+
+
+@contextmanager
+def _scoring_lock() -> Iterator[bool]:
+    """Hold SCORING_LOCK, without waiting, for the duration; yields whether it was taken.
+
+    A named lock belongs to a connection, and the session may change connection between
+    transactions, so the lock is held on a connection of its own. If the worker dies, MySQL
+    drops the connection and the lock with it.
+    """
+    with db.engine.connect() as connection:
+        acquired = connection.execute(
+            text("SELECT GET_LOCK(:name, 0)"), {"name": SCORING_LOCK}
+        ).scalar()
+        try:
+            yield acquired == 1
+        finally:
+            if acquired == 1:
+                try:
+                    connection.execute(text("SELECT RELEASE_LOCK(:name)"), {"name": SCORING_LOCK})
+                except SQLAlchemyError:
+                    # The connection is gone, and the lock with it. The run itself committed.
+                    logger.warning("could not release the scoring lock", exc_info=True)
+
+
+def _score_all_stations(now: datetime) -> ScoringRun:
     started = time.perf_counter()
     settings = current_settings()
     window, firmware = _window_reports(now - settings.scoring_window, now)
@@ -58,6 +105,7 @@ def run_scoring_once(now: datetime) -> ScoringRun:
 
     rows: list[dict[str, Any]] = []
     changes: list[dict[str, Any]] = []
+    silent = 0
     # Sorted, so the Flag Changes of one run are appended in a stable order.
     station_ids = sorted(db.session.scalars(select(Station.station_id)))
     for station_id in station_ids:
@@ -73,6 +121,7 @@ def run_scoring_once(now: datetime) -> ScoringRun:
             station_id, previous["firmware_version"] if previous else None
         )
         row = _health_row(station_id, assessment, firmware_version)
+        silent += assessment.silent
         if previous is None or any(row[c] != previous[c] for c in VISIBLE_STATE):
             rows.append(row)
         if assessment.flag_change is not None:
@@ -95,6 +144,7 @@ def run_scoring_once(now: datetime) -> ScoringRun:
         stations_scored=len(station_ids),
         stations_written=len(rows),
         flag_changes=len(changes),
+        silent_stations=silent,
         duration_ms=round((time.perf_counter() - started) * 1000, 1),
     )
     db.session.execute(
