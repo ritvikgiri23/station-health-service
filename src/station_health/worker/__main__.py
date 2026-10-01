@@ -1,19 +1,27 @@
 """The worker process: `python -m station_health.worker`.
 
-A thin loop around `run_scoring_once`: one scoring run every WORKER_INTERVAL_SECONDS
-(start to start), until SIGTERM or SIGINT.
+A thin loop: every WORKER_INTERVAL_SECONDS (start to start), until SIGTERM or SIGINT,
+a scoring run, then hourly summary catch-up, then retention clean-up. Catch-up runs
+before retention so an hour is summarised before its Health Reports can expire. Each
+step fails on its own, so a failing clean-up never stops scoring.
 """
 
 import logging
 import signal
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import asdict
+from datetime import datetime
+from typing import Any
 
 from flask import Flask
 
 from station_health.app import create_app
 from station_health.runtime import current_settings, current_time
+from station_health.worker.retention import run_retention
 from station_health.worker.scoring_run import run_scoring_once
+from station_health.worker.summary_catch_up import run_summary_catch_up
 
 logger = logging.getLogger("station_health.worker")
 
@@ -32,23 +40,22 @@ def run_forever(app: Flask, stop: threading.Event) -> None:
     logger.info("worker started", extra={"interval_seconds": interval})
     while not stop.is_set():
         started = time.monotonic()
-        try:
-            with app.app_context():
-                run = run_scoring_once(current_time())
-            logger.info(
-                "scoring run",
-                extra={
-                    "stations_scored": run.stations_scored,
-                    "stations_written": run.stations_written,
-                    "flag_changes": run.flag_changes,
-                    "duration_ms": run.duration_ms,
-                },
-            )
-        except Exception:
-            # A failed run (e.g. the database restarting) must not stop the worker.
-            logger.exception("scoring run failed")
+        _step(app, "scoring run", run_scoring_once)
+        _step(app, "summary catch-up", run_summary_catch_up)
+        _step(app, "retention", run_retention)
         stop.wait(max(0.0, interval - (time.monotonic() - started)))
     logger.info("worker stopped")
+
+
+def _step(app: Flask, name: str, step: Callable[[datetime], Any]) -> None:
+    """Run one worker step as of now and log its result's fields."""
+    try:
+        with app.app_context():
+            result = step(current_time())
+        logger.info(name, extra=asdict(result))
+    except Exception:
+        # A failed step (e.g. the database restarting) must not stop the worker.
+        logger.exception(f"{name} failed")
 
 
 if __name__ == "__main__":

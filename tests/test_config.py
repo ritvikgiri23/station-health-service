@@ -21,6 +21,8 @@ def test_service_refuses_to_start_with_an_unknown_log_level() -> None:
     [
         "INGEST_FUTURE_TOLERANCE_SECONDS",
         "RAW_RETENTION_HOURS",
+        "SUMMARY_RETENTION_DAYS",
+        "RETENTION_BATCH_SIZE",
         "SCORING_WINDOW_MINUTES",
         "WORKER_INTERVAL_SECONDS",
     ],

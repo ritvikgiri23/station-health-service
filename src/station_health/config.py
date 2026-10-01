@@ -21,6 +21,8 @@ API_KEY_VARIABLES = {
 
 DEFAULT_INGEST_FUTURE_TOLERANCE = timedelta(minutes=5)
 DEFAULT_RAW_RETENTION = timedelta(hours=48)
+DEFAULT_SUMMARY_RETENTION = timedelta(days=30)
+DEFAULT_RETENTION_BATCH_SIZE = 10_000
 DEFAULT_SCORING_WINDOW = timedelta(minutes=15)
 DEFAULT_WORKER_INTERVAL = timedelta(seconds=60)
 DEFAULT_SCORING = ScoringConfig()
@@ -37,6 +39,9 @@ class Settings:
     api_keys: Mapping[str, frozenset[Role]] = field(default_factory=dict)
     ingest_future_tolerance: timedelta = DEFAULT_INGEST_FUTURE_TOLERANCE
     raw_retention: timedelta = DEFAULT_RAW_RETENTION
+    summary_retention: timedelta = DEFAULT_SUMMARY_RETENTION
+    # Rows deleted per statement by retention clean-up.
+    retention_batch_size: int = DEFAULT_RETENTION_BATCH_SIZE
     scoring_window: timedelta = DEFAULT_SCORING_WINDOW
     worker_interval: timedelta = DEFAULT_WORKER_INTERVAL
     scoring: ScoringConfig = DEFAULT_SCORING
@@ -68,6 +73,12 @@ class Settings:
                 hours=_positive_int(
                     env, "RAW_RETENTION_HOURS", int(DEFAULT_RAW_RETENTION.total_seconds()) // 3600
                 )
+            ),
+            summary_retention=timedelta(
+                days=_positive_int(env, "SUMMARY_RETENTION_DAYS", DEFAULT_SUMMARY_RETENTION.days)
+            ),
+            retention_batch_size=_positive_int(
+                env, "RETENTION_BATCH_SIZE", DEFAULT_RETENTION_BATCH_SIZE
             ),
             scoring_window=timedelta(
                 minutes=_positive_int(

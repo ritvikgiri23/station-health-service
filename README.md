@@ -14,7 +14,7 @@ A Flask microservice that ingests Health Reports from the NOC Collector and judg
 make up        # docker compose up --build -d
 ```
 
-This builds the image, starts MySQL 8, the API and the worker, and applies database migrations (`flask db upgrade`) before the API starts serving. The worker is the same image running `python -m station_health.worker`: every 60 seconds (`WORKER_INTERVAL_SECONDS`) it performs a scoring run. Once it is up:
+This builds the image, starts MySQL 8, the API and the worker, and applies database migrations (`flask db upgrade`) before the API starts serving. The worker is the same image running `python -m station_health.worker`: every 60 seconds (`WORKER_INTERVAL_SECONDS`) it performs a scoring run, catches up hourly summaries and applies retention (see [Hourly summaries and retention](#hourly-summaries-and-retention)). Once it is up:
 
 | URL | What |
 |---|---|
@@ -90,6 +90,15 @@ This is a snapshot of current health across every registered Station. `overall` 
 - **Firmware version**: each scoring run takes it from the Station's newest Health Report in the Scoring Window. A Silent Station keeps the last one seen.
 - **Source**: figures come from Station health and the Station Registry, never from raw Health Reports, so they are as of the last scoring run. A Station registered since that run counts toward the station count only. Averages cover only Stations that have a score, so Silent Stations are left out. Each average is `null` when no Station has a score, and the percentage is `null` when there are no Stations.
 
+```sh
+curl 'localhost:8000/metrics/trend?hours=24&group_by=region' -H 'X-API-Key: dev-read-key'
+```
+
+This returns one point per completed hour over the past `hours` (24 by default, at most the summary retention in hours), oldest first. The hour in progress is not included. Each point holds the number of Stations that reported in the hour, how many of them had an average Hygiene Score below the Flag Threshold, and their average Hygiene Score, Availability and p95 latency.
+
+- **Source**: points come from hourly summaries, never raw Health Reports. Summaries exist only for Stations that reported, and Silent and Poor Hygiene history is not kept, so a point covers reporting Stations and counts those below the Flag Threshold instead of those with Poor Hygiene. An hour with no summaries is a point with zero counts and `null` averages.
+- **Grouping**: `group_by=region` adds `groups`, each with a point for every hour. The Region is the Station's current one. A Station without a Region, or no longer registered, goes in `unassigned`, which comes last.
+
 ### Station Registry
 
 The Station Registry lists the Stations expected to exist, each with its Region. Managing it needs an `admin` key. `read` and `ingest` keys get `403`.
@@ -107,6 +116,15 @@ curl -X DELETE localhost:8000/stations/ST-0042 -H 'X-API-Key: dev-admin-key'
 - `DELETE /stations/{station_id}` returns `204`, or `404` if the Station isn't registered. It removes the Station and its current health, so the Station is no longer scored or listed. Its Health Reports and Flag Changes stay, and the Health Reports age out. A later Health Report for that Station registers it again as an Unverified Station. That Station starts with no flag state, and its Health Reports still in the window count. One exception: a scoring run already under way when the delete lands can write the Station's health row back. The row stays hidden, but a Station registered again later would start from it.
 - `GET /stations` lists Stations by `station_id`. `verified=false` shows only Unverified Stations. It is paged like the Poor Hygiene list (`limit` 50 by default, at most 500; pass `next_cursor` as `cursor`).
 - `make seed` runs `flask seed-stations --count N` in the API container. It is idempotent: running it again updates the same Stations, and confirms any of them that had reported as Unverified Stations.
+
+### Hourly summaries and retention
+
+After each scoring run the worker writes hourly summaries, then deletes expired rows.
+
+- **Summaries**: one row per Station and completed hour `[hh:00, hh+1:00)` in which it reported. A row holds the report count, online count, average, maximum and p95 latency of online Health Reports, the sum of Error Counts and the average Hygiene Score. The average Hygiene Score is the mean score of the consecutive Scoring Windows that tile the hour (four 15-minute windows by default), each scored like a scoring run. A window with no Health Reports is Silent and counts as 0.
+- **Catch-up**: each cycle summarises every completed hour within raw retention that has no summary yet. An hour is summarised 5 minutes after it ends, so Health Reports from its last Probes are in first. So after the worker has been down, it fills in every hour it missed, and backfilled history gets summarised. Running it again writes nothing. Once an hour has summaries, Health Reports that arrive late for it are not added. An hour that started longer ago than raw retention is skipped, because retention may already have deleted part of it.
+- **Retention**: raw Health Reports older than `RAW_RETENTION_HOURS` (48) are deleted. That is the same cut-off ingest applies. Hourly summaries are deleted once their hour started more than `SUMMARY_RETENTION_DAYS` (30) before the current hour. Deletes run in batches of `RETENTION_BATCH_SIZE` rows (10,000), each committed on its own. In production the tables would be partitioned by day, and whole partitions dropped instead.
+- Each step logs its result. A step that fails is logged and does not stop the others.
 
 ### Authentication
 
@@ -158,7 +176,9 @@ src/station_health/
   stations/       # Station Registry: admin endpoints, storage, the seed command
   scoring.py      # the pure scoring core: window Health Reports + flag state → Hygiene Score, Poor Hygiene
   health/         # Station health status endpoint, Station health, Flag Change and scoring-run records
-  worker/         # the scoring run ("run once at now") and the worker loop process
+  metrics/        # metrics snapshot (from Station health) and hourly trend (from summaries)
+  summaries/      # hourly summaries: the pure per-Station hour summary and its table
+  worker/         # scoring run, summary catch-up, retention ("run once at now") and the loop
   ops/            # liveness and readiness checks
   migrations/     # Alembic migrations (Flask-Migrate)
 tests/            # integration tests against Testcontainers MySQL, unit tests of the scoring core
