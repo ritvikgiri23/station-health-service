@@ -178,14 +178,35 @@ Every design scenario is a named test, including duplicates, late arrival, futur
 
 ## 12. AI-assisted development
 
+I built this with Claude Code in three stages. First, a design interview: the AI asked one question at a time against the brief, and I chose an answer each time. That produced `CONTEXT.md`, the three ADRs and the [spec](station-health-service/spec.md). Second, the spec was split into 13 vertical-slice [issues](station-health-service/issues/), each with a checklist. Third, each issue was implemented in a fresh session, so a session started from the issue and the docs, not from leftover chat. The AI wrote nearly all the code. My job was the decisions, and checking that the result matched them.
+
 ### Validating AI-generated code
 
-_To be written by the author._
+- **Scenarios came before code.** The flapping, slow, error-prone, Silent, hovering and one-good-report cases were agreed during the design interview, with expected scores. They became named tests (section 4), so the generated scoring code had to reproduce numbers I had already checked by hand. It did not get to choose them.
+- **Tests run against real MySQL.** The risky behaviour (primary-key idempotency, upserts, `GET_LOCK`, summary SQL) is MySQL-specific. A mocked database would have let plausible but wrong SQL pass. The suite (224 tests at the backfill issue) runs against MySQL 8 in Testcontainers, with ruff and `mypy --strict` on every issue.
+- **Every issue got two independent reviews.** After each issue, two sub-agents reviewed the diff in parallel: one against the repo's standards, one against the issue's checklist and the spec. They caught real bugs before commit:
+  - At the maximum `hours`, the oldest trend point read an hourly summary that retention had already deleted.
+  - At a simulator speed of 1 or less, simulated time never caught up with the clock, so every Station looked Silent.
+  - An uncaught connection reset crashed the simulator. The restart replayed a fresh backlog, which doubled the Health Reports in each window.
+- **Each issue was run, not just tested.** After an issue, the stack was started in docker-compose and checked by hand: `/readyz` going `503` with MySQL stopped, a hand-computed score of 70 matching the worker's output, the retry of a Health Report returning `200`.
+- **Running the demo found what tests didn't.** The dashboard showed an average score of 82 next to 94% of Stations in Poor Hygiene. Both numbers were correct: the average leaves out Silent Stations, which have no score, while the percentage counts them, and most seeded Stations were Silent because the simulator played only 50 of them. No test fails on this, but an operator would be misled. The tiles should say which Stations each figure covers. That is not fixed yet.
+- **Implementation notes are written back into the issues.** Where the code made a judgement the spec didn't (nearest-rank p95, round half up, Error Count summed over online Health Reports only), the session recorded it in the issue's comments. That gave me a short list of things to check, not a whole diff to reverse-engineer.
 
 ### How AI tools influenced architectural decisions
 
-_To be written by the author._
+The AI was most useful at laying out options with pros, cons and concrete scenarios, and at pushing for decisions I would otherwise have left implicit. Several of the main decisions were mine, against or beyond its recommendation:
+
+- **Stack.** It recommended FastAPI with Postgres. I chose Flask with MySQL, and it then picked the Flask tooling (flask-smorest, so OpenAPI is generated from the validating schemas).
+- **The Collector model (ADR-0002).** It first treated `offline` as something a Station reports about itself. I asked whether the data looked more like heartbeat polling. That led to the Collector model, where Offline means the Probe failed and Silent means our own monitoring stopped reaching the Station. That distinction drives the Flag Reason routing and the Monitoring Gap handling.
+- **Scale first.** Before choosing when to score, I asked it to size the data for a year at 100K Stations. That produced tiered storage and the partition-ready Health Report table (ADR-0001), and reframed the scoring choice around a worker reading a bounded window (ADR-0003).
+- **Driver's point of view.** On Silent and on Error Count, I asked for the options to be weighed by what a driver arriving at the charger would see. That is why Silent counts as Poor Hygiene, and why clearing needs minimum evidence: quick to flag, slow to clear.
+- **Scope.** I kept the payload to the brief's six fields rather than adding a running total and boot identifier (written up as the production approach instead). I chose to describe CI/CD rather than build it, accepted single-Health-Report ingest only, and wanted a backfill, which the AI had suggested skipping. The backfill then needed hourly summary catch-up, which also made the worker recover by itself after downtime.
+
+It also influenced decisions in a quieter way. It suggested the hysteresis gap while sizing the Flag Change table, where hovering Stations would have filled the log, and it noticed during implementation that with the 0.6 / 0.4 weights latency alone can never flag a Station. I kept that as a deliberate property, not a bug.
 
 ### Trade-offs between AI assistance and manual coding
 
-_To be written by the author._
+- **Speed against understanding.** Twelve issues of working, tested code took about a day, far more than I could have typed. The risk is shipping code I don't understand. I offset it by owning every design decision up front, asking for explanations in plain terms when I didn't follow (Probe, the scoring run, the worker's write pattern), and reading each issue's implementation notes.
+- **Where the AI is weakest.** It is confident about the parts that have no test: whether numbers on a screen mislead, whether a demo's seeding makes sense, what an operator will assume. Those I only caught by running the system and looking at it.
+- **Structure is the price.** The AI worked well because the work was shaped for it: a glossary it had to use, ADRs it could not quietly overturn, small issues with checklists, and a fresh context for each issue. That took real time up front, and it is overhead a small manual change would not need.
+- **Breadth of output.** The AI produces more than asked for: extra options in every question, and features beyond the issue, such as a newest-first sort on the Poor Hygiene list. Much of the review effort was keeping scope to what the brief and the spec required.
